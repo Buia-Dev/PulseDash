@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "📝 Lista de Tarefas.md",
+                "file": "🏆 Log de Conquistas.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "📝 Lista de Tarefas"
+              "title": "🏆 Log de Conquistas"
             }
           }
         ]
@@ -182,15 +182,16 @@
   },
   "active": "fcc58e7e5bd71c1d",
   "lastOpenFiles": [
+    "📱 App Android (APK).md",
+    "📝 Lista de Tarefas.md",
+    "⚙️ Painel de Controle (Home).md",
     "🗂️ Estrutura de Arquivos.md",
     "🚀 Plano de Implementação ESP32-OBD2.md",
-    "📝 Lista de Tarefas.md",
     "🤖 Atualização para IAs.md",
     "🚀 Animação de Inicialização.md",
     "🔌 Sensores e Comunicação.md",
     "🏆 Log de Conquistas.md",
     "🔧 Hardware e Pinagem.md",
-    "⚙️ Painel de Controle (Home).md",
     "🖥️ Interface e Widgets.md",
     "Arquitetura do Código.md",
     "Configuração de Sensores.md",

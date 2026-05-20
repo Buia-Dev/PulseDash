@@ -23,6 +23,14 @@ function validarConfig(cfg) {
     if (!p || typeof p !== 'object') return false;
     if (!p.bg || typeof p.bg !== 'object') return false;
     if (!p.widgets || !Array.isArray(p.widgets)) return false;
+    // Filtra widgets legados obsoletos do volante virtual e TPMS neon
+    p.widgets = p.widgets.filter(w => w && w.tipo !== 'volante_virtual' && w.tipo !== 'tpms_neon');
+    // Sanitiza sensores obsoletos (transTemp, oilPres, oilTemp, test)
+    p.widgets.forEach(w => {
+      if (w && ['test', 'transTemp', 'oilPres', 'oilTemp'].includes(w.sensor)) {
+        w.sensor = 'demo';
+      }
+    });
   }
   return true;
 }
@@ -257,7 +265,7 @@ async function fetchDadosFallback(){
 // v3.4: k por sensor — rápidos suavizam, lentos são instantâneos
 const SMOOTH_K = {
   rpm: 0.1,  speed: 0.1,  throttle: 0.1, pedal: 0.15, 
-  load: 1.0, // v5.4.1: Sem suavização (valor bruto lido a cada 10s)
+  load: 0.12, // v6.1: Suavização moderada (leitura a cada 500ms pelo scheduler)
   fuelRate: 0.1, boost: 0.1, coolant: 0.3, catalyst: 0.3,
   ambient: 0.3, ethanol: 0.3, fuelLevel: 1.0, voltage: 1.0, demo: 0.05   
 };
@@ -553,12 +561,23 @@ function suavizar(){ for(const key in ST.smooth){ const k=SMOOTH_K[key]??0.05; S
 
 
 
+const FRAME_BUDGET_MS = 33; // 30fps cap (~33ms por frame)
 let lastFrameTime = 0;
+let lastRenderTs = 0;
+
 function update(ts){ 
   if (ST.booting) {
     requestAnimationFrame(update);
     return;
   }
+
+  // --- Throttle a 30fps: pula o frame se ainda não passaram 33ms ---
+  if (ts - lastRenderTs < FRAME_BUDGET_MS) {
+    requestAnimationFrame(update);
+    return;
+  }
+  lastRenderTs = ts;
+
   const now = ts * 0.001;
   let dt = lastFrameTime > 0 ? (now - lastFrameTime) : 0;
   lastFrameTime = now;
@@ -566,12 +585,12 @@ function update(ts){
 
   ST.dados.demo = 512 + 512 * Math.sin(ts * 0.001); 
   suavizar(); 
-  updatePerf(); // Atualiza lógica de performance
-  updateTripLogic(dt); // Atualiza lógica do computador de bordo
-  if (TRIP.open) {
-    updateTripUI(); // Atualiza painel visual apenas se aberto
-  }
+  updatePerf();
+  updateTripLogic(dt);
+  if (TRIP.open) updateTripUI();
   ST.demoT = ts * 0.001; 
+
+  // Redesenha apenas widgets da página ativa (ou todos no editor)
   for(const wid in ST.cvs){ 
     const w = ST.widgetMap.get(wid);
     if(w && (w.pg === ST.pg || ST.editor)) {

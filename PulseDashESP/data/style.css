@@ -20,7 +20,9 @@ body, html {
 #pages-wrap { 
   display: flex; gap: 50px; width: max-content; height: 915px; 
   position: absolute; left: 0; top: 0; transform-origin: top left;
-  transition: transform 0.5s cubic-bezier(0.23, 1, 0.32, 1); 
+  transition: transform 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+  will-change: transform;
+  backface-visibility: hidden;
 }
 .page { flex: 0 0 412px; width: 412px; height: 915px; position: relative; z-index: 1; background-size: cover; background-position: center; }
 
@@ -889,29 +891,7 @@ body, html {
 #ov-bar {
   overflow: hidden;
 }
-#ov-bar::after {
-  content: '';
-  position: absolute;
-  bottom: 0; left: 0;
-  width: 100%; height: 2px;
-  background: linear-gradient(90deg, 
-    transparent 0%, 
-    var(--azul-c) 30%, 
-    var(--roxo-c) 48%, 
-    var(--branco) 55%, 
-    var(--roxo-c) 62%, 
-    var(--azul-c) 80%, 
-    transparent 100%
-  );
-  background-size: 200% auto;
-  animation: bar-laser-sweep 16s linear infinite;
-  z-index: 10;
-}
-
-@keyframes bar-laser-sweep {
-  0% { background-position: 200% center; }
-  100% { background-position: -200% center; }
-}
+/* ::after removido — causava bug visual de 1px no topo quando ov-bar está escondido */
 
 /* --- FRONTEIRA LASER VERTICAL NO PAINEL DE AJUSTES (cpanel) --- */
 #cpanel::after {

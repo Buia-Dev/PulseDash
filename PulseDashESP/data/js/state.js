@@ -18,7 +18,6 @@ const LOCAL_IMAGES = [
 
 const SENSORS_CONFIG = {
   demo:       { id: 'demo',       nome: '🤖 MODO DEMO',      unit: '',      grp: 'VIRTUAL' },
-  test:       { id: 'test',       nome: '🔌 POTENCIÔMETRO',   unit: 'raw',   grp: 'SISTEMA' },
   rpm:        { id: 'rpm',        nome: '🏎️ RPM',            unit: 'RPM',   grp: 'MOTOR' },
   speed:      { id: 'speed',      nome: '🏁 VELOCIDADE',      unit: 'KM/H',  grp: 'MOTOR' },
   throttle:   { id: 'throttle',   nome: '🦋 BORBOLETA',       unit: '%',     grp: 'MOTOR' },
@@ -34,9 +33,6 @@ const SENSORS_CONFIG = {
   fuelLevel:  { id: 'fuelLevel',  nome: '⛽ NÍVEL COMBUSTÍVEL', unit: '%',   grp: 'SISTEMA' },
 
   // Novos sensores estendidos v6.0 (GM UDS & OBD2)
-  transTemp:  { id: 'transTemp',  nome: '🌡️ TEMP. CÂMBIO',    unit: '°C',    grp: 'TEMPERATURA' },
-  oilPres:    { id: 'oilPres',    nome: '🛢️ PRESSÃO ÓLEO',    unit: 'PSI',   grp: 'MOTOR' },
-  oilTemp:    { id: 'oilTemp',    nome: '🌡️ TEMP. ÓLEO',      unit: '°C',    grp: 'TEMPERATURA' },
   tripDist:   { id: 'tripDist',   nome: '📏 ODÔMETRO TOTAL',   unit: 'KM',    grp: 'SISTEMA' },
 
   // Computador de bordo & Virtuais v6.0
