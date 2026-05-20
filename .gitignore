@@ -1,0 +1,25 @@
+# Dependências
+node_modules/
+**/node_modules/
+
+# IDEs e ferramentas
+.vscode/
+.idea/
+.obsidian/workspace.json
+
+# Arquivos temporários e logs da raiz
+*.log
+*.png
+*.webp
+*.txt
+output.json
+
+# Compilações e Builds
+*.apk
+*.bin
+*.hex
+*.elf
+
+# Arquivos de Sistema
+Thumbs.db
+.DS_Store

@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>PULSEDASH - PREMIUM AUTOMOTIVE</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;500;700&family=Oxanium:wght@400;700&family=Michroma&family=Teko:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  
+  <!-- PWA Meta Tags -->
+  <link rel="manifest" href="./manifest.json">
+  <meta name="theme-color" content="#00f2ff">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  
+  <!-- DEBUG DE ERROS DE RUNTIME NO CELULAR -->
+  <script>
+    window.addEventListener('error', function(e) {
+      const d = document.getElementById('debug-err-overlay') || document.createElement('div');
+      d.id = 'debug-err-overlay';
+      d.style = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(18,5,5,0.98);color:#ff3355;padding:25px 15px;z-index:999999;font-size:12px;font-family:monospace;white-space:pre-wrap;box-sizing:border-box;overflow-y:auto;border:2px solid #ff3355;';
+      d.innerHTML = '<h3 style="color:#ff3355;margin:0 0 10px 0;font-family:\'Orbitron\',sans-serif;letter-spacing:1px;">⚠️ ERRO CRÍTICO RUNTIME</h3>' +
+                    '<b>Erro:</b> ' + e.message + '<br>' +
+                    '<b>Arquivo:</b> ' + e.filename.split('/').pop() + '<br>' +
+                    '<b>Linha:</b> ' + e.lineno + ':' + e.colno + '<br><br>' +
+                    '<b>Pilha de Execução (Stack):</b><br>' + (e.error ? e.error.stack : 'Indisponível') + 
+                    '<br><br><button onclick="localStorage.clear();location.reload();" style="background:#ff3355;color:#fff;border:none;padding:12px 20px;border-radius:6px;font-weight:bold;cursor:pointer;font-family:sans-serif;width:100%;">♻️ LIMPAR CACHE/LOCALSTORAGE E REINICIAR</button>' +
+                    '<br><br><button onclick="document.getElementById(\'debug-err-overlay\').remove();" style="background:#222;color:#aaa;border:1px solid #444;padding:8px 20px;border-radius:6px;font-weight:bold;cursor:pointer;font-family:sans-serif;width:100%;margin-top:10px;">FECHAR</button>';
+      document.body.appendChild(d);
+    });
+    window.addEventListener('unhandledrejection', function(e) {
+      const d = document.getElementById('debug-err-overlay') || document.createElement('div');
+      d.id = 'debug-err-overlay';
+      d.style = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(18,5,5,0.98);color:#ff7733;padding:25px 15px;z-index:999999;font-size:12px;font-family:monospace;white-space:pre-wrap;box-sizing:border-box;overflow-y:auto;border:2px solid #ff7733;';
+      d.innerHTML = '<h3 style="color:#ff7733;margin:0 0 10px 0;font-family:\'Orbitron\',sans-serif;letter-spacing:1px;">⚠️ PROMESSA REJEITADA</h3>' +
+                    '<b>Motivo:</b> ' + e.reason + '<br><br>' +
+                    '<b>Pilha de Execução (Stack):</b><br>' + (e.reason && e.reason.stack ? e.reason.stack : 'Indisponível') +
+                    '<br><br><button onclick="localStorage.clear();location.reload();" style="background:#ff7733;color:#fff;border:none;padding:12px 20px;border-radius:6px;font-weight:bold;cursor:pointer;font-family:sans-serif;width:100%;">♻️ LIMPAR CACHE E REINICIAR</button>';
+      document.body.appendChild(d);
+    });
+  </script>
+</head>
+<body>
+
+<!-- SPLASH SCREEN ANIMATION -->
+<div id="splash">
+  <!-- LINHA DE SCANNER LASER -->
+  <div class="scan-line"></div>
+
+  <!-- LABIRINTO DE CIRCUITOS SVG -->
+  <svg id="splash-pcb" viewBox="0 0 800 600" preserveAspectRatio="xMidYMid slice">
+    <!-- DEFINIÇÃO DOS DEGRADÊS PARA OS LASERS -->
+    <defs>
+      <linearGradient id="laser-cyan" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="rgba(0, 242, 255, 0)" />
+        <stop offset="100%" stop-color="#00f2ff" />
+      </linearGradient>
+      <linearGradient id="laser-purple" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="rgba(155, 0, 255, 0)" />
+        <stop offset="100%" stop-color="#9b00ff" />
+      </linearGradient>
+    </defs>
+
+    <!-- PROCESSADOR VIRTUAL CENTRAL -->
+    <rect x="350" y="250" width="100" height="100" rx="8" fill="none" stroke="rgba(0, 242, 255, 0.08)" stroke-width="2" />
+    <rect x="360" y="260" width="80" height="80" rx="5" fill="none" stroke="rgba(155, 0, 255, 0.08)" stroke-width="1.5" />
+
+    <!-- CANAIS ATIVOS DE TRANSMISSÃO -->
+    <g class="active-channels">
+      <!-- Lado Esquerdo -->
+      <path class="pcb-trace" id="tr-l1" d="M350,300 L250,300 L200,250 L100,250 L50,300 L0,300" />
+      <path class="pcb-trace" id="tr-l2" d="M350,320 L270,320 L230,360 L130,360 L90,320 L0,320" />
+      <path class="pcb-trace" id="tr-l3" d="M350,280 L270,280 L230,240 L160,240 L120,200 L0,200" />
+      <path class="pcb-trace" id="tr-l4" d="M350,260 L300,210 L180,210 L130,160 L50,160 L0,110" />
+
+      <!-- Lado Direito -->
+      <path class="pcb-trace" id="tr-r1" d="M450,300 L550,300 L600,250 L700,250 L750,300 L800,300" />
+      <path class="pcb-trace" id="tr-r2" d="M450,320 L530,320 L570,360 L670,360 L710,320 L800,320" />
+      <path class="pcb-trace" id="tr-r3" d="M450,280 L530,280 L570,240 L640,240 L680,200 L800,200" />
+      <path class="pcb-trace" id="tr-r4" d="M450,260 L500,210 L620,210 L670,160 L750,160 L800,110" />
+
+      <!-- Topo -->
+      <path class="pcb-trace" id="tr-t1" d="M400,250 L400,150 L350,100 L350,50 L400,0" />
+      <path class="pcb-trace" id="tr-t2" d="M380,250 L380,180 L320,120 L200,120 L150,70 L150,0" />
+      <path class="pcb-trace" id="tr-t3" d="M420,250 L420,180 L480,120 L600,120 L650,70 L650,0" />
+
+      <!-- Base -->
+      <path class="pcb-trace" id="tr-b1" d="M400,350 L400,450 L450,500 L450,550 L400,600" />
+      <path class="pcb-trace" id="tr-b2" d="M380,350 L380,420 L320,480 L200,480 L150,530 L150,600" />
+      <path class="pcb-trace" id="tr-b3" d="M420,350 L420,420 L480,480 L600,480 L650,530 L650,600" />
+    </g>
+
+    <!-- FEIXES DE LASER SEQUENCIAIS -->
+    <!-- FEIXES DE LASER SEQUENCIAIS (OTIMIZADOS POR GRUPO DE CORES) -->
+    <g class="lasers-cyan-group">
+      <path class="pcb-laser" stroke="url(#laser-cyan)" style="animation-delay: 0.2s;" d="M350,300 L250,300 L200,250 L100,250 L50,300 L0,300" />
+      <path class="pcb-laser" stroke="url(#laser-cyan)" style="animation-delay: 0.8s;" d="M350,320 L270,320 L230,360 L130,360 L90,320 L0,320" />
+      <path class="pcb-laser" stroke="url(#laser-cyan)" style="animation-delay: 1.4s;" d="M350,280 L270,280 L230,240 L160,240 L120,200 L0,200" />
+      <path class="pcb-laser" stroke="url(#laser-cyan)" style="animation-delay: 0.5s;" d="M350,260 L300,210 L180,210 L130,160 L50,160 L0,110" />
+      <path class="pcb-laser" stroke="url(#laser-cyan)" style="animation-delay: 0.3s;" d="M400,250 L400,150 L350,100 L350,50 L400,0" />
+      <path class="pcb-laser" stroke="url(#laser-cyan)" style="animation-delay: 0.6s;" d="M420,250 L420,180 L480,120 L600,120 L650,70 L650,0" />
+      <path class="pcb-laser" stroke="url(#laser-cyan)" style="animation-delay: 1.3s;" d="M380,350 L380,420 L320,480 L200,480 L150,530 L150,600" />
+    </g>
+
+    <g class="lasers-purple-group">
+      <path class="pcb-laser" stroke="url(#laser-purple)" style="animation-delay: 0.4s;" d="M450,300 L550,300 L600,250 L700,250 L750,300 L800,300" />
+      <path class="pcb-laser" stroke="url(#laser-purple)" style="animation-delay: 1.0s;" d="M450,320 L530,320 L570,360 L670,360 L710,320 L800,320" />
+      <path class="pcb-laser" stroke="url(#laser-purple)" style="animation-delay: 1.6s;" d="M450,280 L530,280 L570,240 L640,240 L680,200 L800,200" />
+      <path class="pcb-laser" stroke="url(#laser-purple)" style="animation-delay: 0.7s;" d="M450,260 L500,210 L620,210 L670,160 L750,160 L800,110" />
+      <path class="pcb-laser" stroke="url(#laser-purple)" style="animation-delay: 1.1s;" d="M380,250 L380,180 L320,120 L200,120 L150,70 L150,0" />
+      <path class="pcb-laser" stroke="url(#laser-purple)" style="animation-delay: 0.9s;" d="M400,350 L400,450 L450,500 L450,550 L400,600" />
+      <path class="pcb-laser" stroke="url(#laser-purple)" style="animation-delay: 0.5s;" d="M420,350 L420,420 L480,480 L600,480 L650,530 L650,600" />
+    </g>
+
+    <!-- VIAS/ILHAS FÍSICAS NEON -->
+    <circle cx="250" cy="300" r="3" class="pcb-via" />
+    <circle cx="200" cy="250" r="3" class="pcb-via" />
+    <circle cx="100" cy="250" r="3" class="pcb-via" />
+    <circle cx="50" cy="300" r="3" class="pcb-via" />
+    <circle cx="270" cy="320" r="3" class="pcb-via purple" />
+    <circle cx="230" cy="360" r="3" class="pcb-via purple" />
+    <circle cx="130" cy="360" r="3" class="pcb-via purple" />
+    <circle cx="90" cy="320" r="3" class="pcb-via purple" />
+
+    <circle cx="550" cy="300" r="3" class="pcb-via purple" />
+    <circle cx="600" cy="250" r="3" class="pcb-via purple" />
+    <circle cx="700" cy="250" r="3" class="pcb-via purple" />
+    <circle cx="750" cy="300" r="3" class="pcb-via purple" />
+    <circle cx="530" cy="320" r="3" class="pcb-via" />
+    <circle cx="570" cy="360" r="3" class="pcb-via" />
+    <circle cx="670" cy="360" r="3" class="pcb-via" />
+    <circle cx="710" cy="320" r="3" class="pcb-via" />
+
+    <circle cx="350" cy="100" r="3" class="pcb-via" />
+    <circle cx="350" cy="50" r="3" class="pcb-via" />
+    <circle cx="320" cy="120" r="3" class="pcb-via purple" />
+    <circle cx="480" cy="120" r="3" class="pcb-via" />
+    <circle cx="450" cy="500" r="3" class="pcb-via purple" />
+    <circle cx="320" cy="480" r="3" class="pcb-via" />
+    <circle cx="480" cy="480" r="3" class="pcb-via purple" />
+  </svg>
+
+  <!-- CONTEÚDO CENTRALIZADO -->
+  <div class="splash-container">
+    <div id="splash-logo">PULSEDASH</div>
+    
+    <!-- BOX DE DIAGNÓSTICO RETRO-FUTURISTA -->
+    <div class="hud-box">
+      <div id="splash-status">SEARCHING OBD GATEWAY...</div>
+      <div class="progress-bar-wrap">
+        <div id="progress-fill"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="app">
+  <div id="pages-wrap">
+    <div class="page" id="pg-0"><div id="wl-0"></div></div>
+    <div class="page" id="pg-1"><div id="wl-1"></div></div>
+    <div class="page" id="pg-2"><div id="wl-2"></div></div>
+  </div>
+
+  <div id="pg-dots">
+    <div class="pd active" data-pg="0"></div>
+    <div class="pd" data-pg="1"></div>
+    <div class="pd" data-pg="2"></div>
+  </div>
+
+  <div id="obd-status-pill">
+    <div class="dot"></div>
+  </div>
+
+  <div id="perf-btn" title="Performance Mode">⏱️</div>
+  <div id="trip-btn" title="Computador de Bordo">📊</div>
+
+  <div id="fab">⚙️</div>
+
+  <div id="toast"></div>
+
+  <!-- PERFORMANCE PANEL OVERLAY -->
+  <div id="perf-overlay">
+    <div class="perf-card-wrapper">
+      <div id="perf-ready-flag">READY</div>
+      <div class="perf-card">
+        <div class="perf-title">PERFORMANCE TRACKER</div>
+        
+        <div class="perf-main-speed">
+          <span id="perf-speed">0</span>
+          <span class="perf-unit">KM/H</span>
+        </div>
+        
+        <div class="perf-timer">
+          <span id="perf-timer-val">00.000</span>
+          <span class="perf-sec">s</span>
+        </div>
+
+        <div class="perf-splits" id="perf-splits">
+          <!-- Tempos da puxada atual -->
+        </div>
+        <div class="perf-history" id="perf-history">
+          <!-- Histórico de recordes -->
+        </div>
+
+        <div class="perf-footer">
+          <button class="perf-btn-ui" id="btn-perf-reset">RESET</button>
+          <button class="perf-btn-ui close" id="btn-perf-close">VOLTAR</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TRIP COMPUTER OVERLAY -->
+  <div id="trip-overlay">
+    <div class="trip-card-wrapper">
+      <div class="trip-card">
+        <div class="trip-title">COMPUTADOR DE BORDO</div>
+        
+        <!-- Grid de Estatísticas em tempo real -->
+        <div class="trip-stats-grid">
+          <div class="trip-stat-card">
+            <span class="trip-stat-label">📏 DISTÂNCIA</span>
+            <span class="trip-stat-val" id="trip-val-dist">0.00</span>
+            <span class="trip-stat-unit">KM</span>
+          </div>
+          <div class="trip-stat-card">
+            <span class="trip-stat-label">⛽ COMB. GASTO</span>
+            <span class="trip-stat-val" id="trip-val-fuel">0.00</span>
+            <span class="trip-stat-unit">LITROS</span>
+            <span id="trip-val-fuel-type" style="font-family: 'Orbitron'; font-size: 8px; color: var(--roxo-c); font-weight: bold; margin-top: 5px; display: block; letter-spacing: 1px; text-transform: uppercase;">--</span>
+          </div>
+          <div class="trip-stat-card">
+            <span class="trip-stat-label">🌽 TEOR ETANOL</span>
+            <span class="trip-stat-val" id="trip-val-eth">--</span>
+            <span class="trip-stat-unit">%</span>
+          </div>
+          <div class="trip-stat-card">
+            <span class="trip-stat-label">⏱️ VELOCIDADE MÉD.</span>
+            <span class="trip-stat-val" id="trip-val-avgspeed">0.0</span>
+            <span class="trip-stat-unit">KM/H</span>
+          </div>
+          <div class="trip-stat-card">
+            <span class="trip-stat-label">📊 CONSUMO MÉD.</span>
+            <span class="trip-stat-val" id="trip-val-avgcons">0.00</span>
+            <span class="trip-stat-unit">KM/L</span>
+          </div>
+          <div class="trip-stat-card">
+            <span class="trip-stat-label">💸 CUSTO VIAGEM</span>
+            <span style="display: flex; align-items: center; justify-content: center; gap: 8px; position: relative;">
+              <span class="trip-stat-val" id="trip-val-cost">0.00</span>
+              <span id="btn-trip-edit-price" style="cursor: pointer; font-size: 14px; opacity: 0.6; transition: opacity 0.2s;" title="Configurar Preço">✏️</span>
+            </span>
+            <span class="trip-stat-unit">R$</span>
+          </div>
+        </div>
+
+        <!-- Timers da Viagem -->
+        <div class="trip-timers">
+          <div class="trip-timer-item">
+            <span>TOTAL</span>
+            <b id="trip-timer-total">00:00:00</b>
+          </div>
+          <div class="trip-timer-item">
+            <span>MOVIMENTO</span>
+            <b id="trip-timer-driving">00:00:00</b>
+          </div>
+          <div class="trip-timer-item">
+            <span>PARADO</span>
+            <b id="trip-timer-stopped">00:00:00</b>
+          </div>
+        </div>
+
+        <!-- Botões de Ação -->
+        <div class="trip-footer" style="margin-top: 20px;">
+          <button class="trip-btn-ui reset" id="btn-trip-reset">ZERAR VIAGEM</button>
+          <button class="trip-btn-ui close" id="btn-trip-close">VOLTAR</button>
+        </div>
+      </div>
+
+      <!-- POPUP RÁPIDO DE PREÇO E COMBUSTÍVEL (SOBREPÕE O CARD) -->
+      <div id="trip-edit-popup" class="trip-card" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(10, 10, 10, 0.98); border-radius: 12px; z-index: 10005; flex-direction: column; justify-content: center; align-items: center; padding: 30px 20px; box-sizing: border-box; box-shadow: 0 0 30px rgba(189, 0, 255, 0.35);">
+        <div style="font-family: 'Orbitron'; font-size: 11px; color: var(--roxo-c); letter-spacing: 2px; text-transform: uppercase; font-weight: bold; margin-bottom: 25px;">⛽ Configurar Combustível</div>
+        
+        <div style="width: 100%; display: flex; flex-direction: column; gap: 15px; margin-bottom: 25px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 15px; width: 100%;">
+            <label style="font-family: 'Orbitron'; font-size: 10px; color: #aaa; letter-spacing: 1px;">PREÇO (R$/L):</label>
+            <input type="number" step="0.01" placeholder="Vazio = --" id="trip-inp-price" class="trip-ui-input" style="width: 130px; text-align: center; border-radius: 6px;">
+          </div>
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 15px; width: 100%;">
+            <label style="font-family: 'Orbitron'; font-size: 10px; color: #aaa; letter-spacing: 1px;">COMBUSTÍVEL:</label>
+            <select id="trip-sel-type" class="trip-ui-select" style="width: 130px; border-radius: 6px;">
+              <option value="gasolina">GASOLINA</option>
+              <option value="alcool">ÁLCOOL</option>
+            </select>
+          </div>
+        </div>
+        
+        <div style="display: flex; gap: 12px; width: 100%;">
+          <button class="trip-btn-ui close" id="btn-trip-popup-close" style="padding: 10px 0; font-size: 9px; flex: 1;">VOLTAR</button>
+          <button class="trip-btn-ui" id="btn-trip-popup-save" style="padding: 10px 0; font-size: 9px; flex: 1; border-color: var(--roxo-c); background: rgba(189,0,255,0.05); color: var(--roxo-c);">CONFIRMAR</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- OBD CONNECTION OVERLAY -->
+  <div id="obd-overlay">
+    <div class="obd-card">
+      <div class="obd-title">CAN BUS — ONIX 2026</div>
+      <div class="obd-steps">
+        <div class="obd-step" id="step-bt">
+          <div class="obd-dot"></div>
+          <div class="obd-info">
+            <span class="obd-label">BLUETOOTH (PULSESCAN)</span>
+            <span class="obd-detail" id="step-bt-detail">Aguardando...</span>
+          </div>
+        </div>
+        <div class="obd-line"></div>
+        <div class="obd-step" id="step-can">
+          <div class="obd-dot"></div>
+          <div class="obd-info">
+            <span class="obd-label">CAN BUS</span>
+            <span class="obd-detail" id="step-can-detail">500kbps / Aguardando...</span>
+          </div>
+        </div>
+        <div class="obd-line"></div>
+        <div class="obd-step" id="step-ecu">
+          <div class="obd-dot"></div>
+          <div class="obd-info">
+            <span class="obd-label">ECU VEÍCULO</span>
+            <span class="obd-detail" id="step-ecu-detail">Aguardando...</span>
+          </div>
+        </div>
+        <div class="obd-line"></div>
+        <div class="obd-step" id="step-freq">
+          <div class="obd-dot"></div>
+          <div class="obd-info">
+            <span class="obd-label">FREQUÊNCIA</span>
+            <span class="obd-detail" id="step-freq-detail">-- Hz</span>
+          </div>
+        </div>
+      </div>
+      <div class="obd-status" id="obd-status-msg">Sistema aguardando...</div>
+      <div style="display:flex; gap:10px; width:100%;">
+        <button class="obd-close-btn btn-blue" id="btn-obd-connect" style="display:none;">CONECTAR</button>
+        <button class="obd-close-btn" id="btn-obd-close">FECHAR</button>
+      </div>
+    </div>
+  </div>
+  
+  <div id="ov-bar">
+    <div style="display:flex;align-items:center;gap:15px">
+      <h2>✦ PULSEDASH</h2>
+      <button class="tbbtn" id="btn-fs">⛶</button>
+    </div>
+    <div class="tbbtns">
+      <button class="tbbtn" id="btn-bg">🖼 FUNDO</button>
+      <button class="tbbtn" id="btn-add">+ WIDGET</button>
+      <button class="tbbtn" style="color:#f55" id="btn-exit">SAIR</button>
+    </div>
+  </div>
+
+  <div id="cpanel">
+    <div class="ctitle" id="panel-title">MENU DE AJUSTES</div>
+    <div id="cfg-fields"></div>
+    <div class="pbtns">
+      <button class="pbtn btn-sq pb-del" id="btn-del" title="Deletar">🗑️</button>
+      <button class="pbtn pb-save" style="flex: 1;" id="btn-save-panel">SALVAR</button>
+    </div>
+  </div>
+
+  <div id="mv-lock-btn"><b>🔓</b><span>MOVER</span></div>
+  <div id="layer-picker"></div>
+  <!-- MODAIS -->
+  <div id="addmenu"><div class="amcontent"><p style="font-family:'Orbitron';font-size:10px;color:var(--roxo-c);text-align:center">ADICIONAR WIDGET</p><div class="amgrid" id="amgrid"></div></div></div>
+  <div id="bgmenu">
+    <div class="amcontent">
+      <p style="font-family:'Orbitron';font-size:10px;color:var(--roxo-c);text-align:center">MUDAR PLANO DE FUNDO</p>
+      <div class="fg">
+        <label class="fl">Escolha a Imagem (Pasta relogios/)</label>
+        <select class="fsel" id="bg-url"></select>
+      </div>
+      <div class="fg">
+        <label class="fl" style="color: var(--cyan);">OU Imagem do Celular / PC</label>
+        <input type="file" id="bg-file-picker" accept="image/*" style="display: none;">
+        <button class="pbtn pb-add" id="btn-trigger-bg-picker" style="width: 100%; border: 1px dashed var(--cyan); background: transparent; color: var(--cyan);">📷 CARREGAR DA GALERIA</button>
+      </div>
+      <div class="fg">
+        <label class="fl">Estilo</label>
+        <select class="fsel" id="bg-size">
+          <option value="cover">Preencher Tudo (Cover)</option>
+          <option value="contain">Caber Inteiro (Contain)</option>
+          <option value="100% 100%">Esticar (Stretch)</option>
+        </select>
+      </div>
+      <button class="pbtn pb-save" style="width:100%" id="btn-close-bg">FECHAR</button>
+    </div>
+  </div>
+</div>
+
+<!-- SCRIPTS LOAD -->
+<script type="module" src="js/main.js"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js').then(reg => {
+        console.log('[PulseDash] PWA Registrado!', reg);
+      }).catch(err => {
+        console.log('[PulseDash] PWA Falha:', err);
+      });
+    });
+  }
+</script>
+
+</body>
+</html>

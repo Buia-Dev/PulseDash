@@ -1,0 +1,23 @@
+{
+  "name": "pulsedashapp",
+  "version": "5.5.0",
+  "description": "PulseDash Premium Android Client via Bluetooth Serial",
+  "main": "index.js",
+  "scripts": {
+    "sync-assets": "node sync.js",
+    "build": "npm run sync-assets",
+    "cap-copy": "npx cap copy",
+    "cap-sync": "npx cap sync",
+    "android-sync": "npm run build && npx cap sync android",
+    "start-dev": "npx http-server www -p 8080 --cors -c-1"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/core": "^6.0.0",
+    "cordova-plugin-bluetooth-serial": "^0.4.7"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.0.0",
+    "http-server": "^14.1.1"
+  }
+}
