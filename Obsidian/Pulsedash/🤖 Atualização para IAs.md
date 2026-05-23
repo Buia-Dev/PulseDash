@@ -1,53 +1,106 @@
-# 🤖 Atualizações para IAs
+# 🤖 Atualização para IAs
 
 > Este arquivo é um resumo técnico rápido para "sincronizar" outras IAs com o estado atual do projeto PulseDash sem precisar ler toda a documentação.
 
 ---
 
-## 📅 Última Atualização: 2026-05-20
-**Versão Atual:** v5.4.1 (Estável em Pista) → **v5.5 (Em Planejamento Ativo)**
-
-### ⚡ Status do Ambiente de IA & MCP (Novo)
-- **Servidores MCP:** Ativos e integrados à IDE! O `github-mcp-server` está rodando em segundo plano via Docker e o `chrome-devtools-mcp` opera perfeitamente sob o Node.js v24.15.0. 
-- **NPM Fix:** Estrutura de pastas globais criada e restrições de script contornadas.
-
-### 🛠️ Estado Atual do Firmware (v5.4.1 Estável)
-- **Protocolo:** CAN Bus 29-bit nativo (TWAI) instalada e operando. ELM327 Bluetooth removido 100%.
-- **Endereço Onix 2026:** TX `0x18DB33F1` / RX `0x18DAF111` @ 500kbps.
-- **PIDs Ativos:** RPM (`0x0C`), Velocidade (`0x0D`), Borboleta (`0x11`), Pedal Real (`0x49`), Combustível (`0x2F` com filtro EMA 1Hz), Carga do Motor (`0x04`), Boost (`0x0B`), Catalisador (`0x3C`), Voltagem (`0x42`) e Etanol (`0x52`).
-- **Suavização Individual:** Slider `smoothK` ativo no editor para widgets do tipo `agulha_pura` no JS.
-
+## 📅 Última Atualização: 2026-05-23
+**Versão Atual:** v6.2 — **TESTADO NO CARRO** ✅
 
 ---
 
-## 🚀 Plano para a v5.5 (Próxima Fase Imediata)
+## ⚡ Status do Ambiente de Desenvolvimento
 
-1.  **Escalonador Triplo Intercalado de CAN:**
-    *   Para evitar jitter e engasgos nos ponteiros VIP de alta frequência, criaremos slots dinâmicos de leitura na `obdTask` (Core 0), garantindo que **no máximo 1 sensor auxiliar** seja lido por loop principal.
-    *   *VIP (A cada ~60ms):* RPM, Speed, Throttle, Pedal.
-    *   *Médio (1s):* Fuel Level, Fuel Rate (Consumo), Load (Carga do Motor).
-    *   *Lento (5s):* Coolant, Ambient, Voltage, Catalyst, Boost.
-    *   *Ultra-Lento (Startup + 5min):* Etanol % (`0x52`) lido apenas uma vez no handshake OK e verificado a cada 5min.
-
-2.  **Ajuste do Aborto de Largada (0-100):**
-    *   Aumentar tolerância de frenagem de 2 km/h para **15 km/h** no JS para aguentar destracionamento (cantada de pneu) na arrancada. Adicionar reset ao parar totalmente.
-
-3.  **Persistência Física do Rank Top 5 no ESP32 (`LittleFS`):**
-    *   Criar rotas HTTP `/perf` (GET/POST) no ESP32.
-    *   O JS lê, ordena por menor tempo e grava no arquivo `/perf.txt` no ESP32 como texto simples compacto: `DD/MM/YY 0a50 SS.XXX 0a100 SS.XXX`.
-    *   Manter a exibição da puxada "Atual" no dashboard web mesmo que ela não qualifique para o Top 5.
+- **arduino-cli** instalado em `scratch/bin/arduino-cli.exe` — compila `.ino` direto pelo terminal.
+- **Core ESP32:** `esp32:esp32@3.3.8` instalado em `AppData\Local\Arduino15`.
+- **Java:** `C:\Program Files\Android\Android Studio\jbr\bin\java.exe` — usado para o Gradle.
+- **Antigravity** consegue compilar APK e Firmware sem abrir nenhuma IDE.
 
 ---
 
-## 🔮 Roteiro para a v6.0 (Computador de Bordo e PIDs GM)
+## 🏗️ Arquitetura de Arquivos (v6.2)
 
-1.  **Computador de Bordo (Trip Computer):**
-    *   Tela de estatísticas sem gráficos com cards translúcidos de Distância, Vel. Média, Combustível gasto (L), Consumo Médio (km/L), Custos de viagem e Tempos.
-    *   **Cálculo Otimizado:** Distância integrada via Speed VIP. Combustível integrado apenas no tick de 1s (médio) do Fuel Rate, com **zero overload na CAN**.
-    *   **Consumo Flex Fallback:** Caso a vazão do PID `0x5E` retorne zero, calcula via **MAF (PID `0x10`) + Etanol %** ajustando a estequiometria (AFR) e densidade real do combustível.
-2.  **PIDs Proprietários GM Service 22:**
-    *   Monitoramento avançado via cabeçalho `7E0`: Temperatura de Câmbio (`221940`), Pressão de Óleo (`22115C`), Temp. Óleo (`221154`) e Ângulo do Volante (`222411`).
+```
+gol_g1_dashboard/PulseDashESP/data/js/
+├── state.js       — Sensores, CFG_DEF, LOCAL_IMAGES, SENSORS_CONFIG, ICONES_SVG
+├── renderers.js   — Desenho Canvas: arcos, barras, agulhas, réguas, luzes espia
+├── editor.js      — Editor drag-and-drop, FIELD_MAP, applyConfig, openPanel
+├── main.js        — Loop rAF, OBD overlay, swapOrientation, variáveis globais
+├── transport.js   — Bluetooth Serial nativo, saveToESP, loadFromESP, saveRecordes
+├── perf.js        — Cronômetro 0-100, state machine, Top 5, histórico
+└── trip.js        — Computador de bordo (distância, combustível, custo, timers)
+```
+
+**Regra de ouro:** A pasta `gol_g1_dashboard` é o LABORATÓRIO. A pasta `PulseDash v6.0` é o REPOSITÓRIO OFICIAL. Sempre sincronizar ao finalizar uma sessão de trabalho.
 
 ---
 
-**Dica para a IA:** Respeite a integridade do código sem placeholders. Mantenha a otimização extrema no Core 0 do ESP32 para evitar latência CAN.
+## 🔌 Firmware (PulseDashESP_BT.ino)
+
+**Protocolo:** CAN Bus 29-bit Extended @ 500kbps  
+**Módulo:** SN65HVD230 (TX=GPIO17, RX=GPIO16)  
+**Bluetooth:** `BluetoothSerial SerialBT` → nome `PULSESCAN`  
+**Transmissão:** JSON linha por linha a ~33Hz via `SerialBT.println(buf)`  
+
+**Endereços Onix 2026:**
+- TX Request: `0x18DB33F1`
+- RX Response: `0x18DAF111`
+- UDS TX: `0x18DA11F1` → UDS RX: `0x18DAF111`
+
+**Scheduler de 10 slots (50ms/ciclo):**
+- Todo ciclo: RPM (`0x0C`) + Speed (`0x0D`)
+- `loopCount % 2 == 0`: Borboleta (`0x11`) ou Pedal (`0x49`) alternados
+- `loopCount % 10 == 0`: Carga (`0x04`) ou MAP (`0x0B`) alternados
+- `loopCount % 2 == 1`: `slowIndex` rotaciona entre 10 sensores lentos (Fuel Rate, Coolant, TripDist, Volt, Ambient, Catalyst, FuelLevel, TransTemp, OilPres, OilTemp)
+- Etanol: startup + cada 5min (300s)
+
+**Compilação:**
+```powershell
+.\bin\arduino-cli.exe compile --fqbn esp32:esp32:esp32 "PulseDash v6.0\PulseDashESP_BT" --output-dir "APK\Firmware"
+# Resultado: 85% flash, 12% RAM
+```
+
+---
+
+## 📡 Protocolo de Comunicação App ↔ ESP32
+
+**App → ESP32 (comandos):**
+```json
+{"cmd":"sync", "ts":1748000000}       // Sincroniza hora (Unix timestamp)
+{"cmd":"perf", "payload":[...]}        // Salva Top 5 no LittleFS
+{"cmd":"trip_reset"}                   // Zera o computador de bordo
+```
+
+**ESP32 → App (telemetria, ~33Hz):**
+```json
+{"rpm":1450,"speed":0,"throttle":24,"pedal":20,"load":15,"fuelRate":1.2,"boost":35.2,"coolant":87,"catalyst":420,"ambient":28,"ethanol":72,"voltage":13.8,"fuelLevel":47,"transTemp":72,"oilPres":2.3,"oilTemp":88,"tripDist":0,"tripFuel":0.000,"tripTimeTot":0,"tripTimeDri":0,"obd_state":4}
+```
+
+---
+
+## 🐛 Bugs Conhecidos / Resolvidos em v6.2
+
+| Bug | Causa | Status |
+|:---|:---|:---:|
+| `Script error. 0:0` ao conectar BT | WebView ES6 module isolation | ✅ RESOLVIDO |
+| `_freqHz is not defined` no menu OBD | Variáveis perdidas na refatoração | ✅ RESOLVIDO |
+| Relógios duplicam ao girar tela | `swapOrientation` limpava container inteiro | ✅ RESOLVIDO |
+| Cores dos arcos voltavam ao salvar | `applyConfig` lia inputs `display:none` | ✅ RESOLVIDO |
+| `}` faltando no `loop()` do .ino | Refatoração engoliu chave | ✅ RESOLVIDO |
+| Ícones APK com XML corrompido | BOM UTF-8 nos arquivos XML | ✅ RESOLVIDO |
+
+---
+
+## 🗂️ Localização dos Arquivos Oficiais
+
+| Arquivo | Localização |
+|:---|:---|
+| APK de Release | `scratch/APK/PulseDash_v6.2.apk` |
+| Firmware `.bin` | `scratch/APK/Firmware/PulseDashESP_BT.ino.bin` |
+| Código ESP32 | `scratch/PulseDash v6.0/PulseDashESP_BT/PulseDashESP_BT.ino` |
+| Laboratório Web | `scratch/gol_g1_dashboard/PulseDashESP/data/` |
+| Projeto Android | `scratch/PulseDash v6.0/PulseDashAPP/android/` |
+
+---
+
+**Dica para IA:** Sempre sincronizar `gol_g1_dashboard` → `PulseDash v6.0` ao finalizar sessão. Usar `npx cap sync android` antes de `gradlew assembleDebug`. JAVA_HOME = `C:\Program Files\Android\Android Studio\jbr`.

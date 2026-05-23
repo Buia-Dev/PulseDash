@@ -1,6 +1,6 @@
 # 📱 App Android (APK)
 
-> **Versão:** v6.0 | **Status:** ✅ FUNCIONAL  
+> **Versão:** v6.2 | **Status:** ✅ TESTADO NO CARRO  
 > **Framework:** Capacitor 6 + cordova-plugin-bluetooth-serial  
 > **Referência:** [[⚙️ Painel de Controle (Home)]] | [[🔌 Sensores e Comunicação]]
 
@@ -11,41 +11,42 @@
 ```
 PulseDashAPP/
 ├── www/                    ← Assets web copiados de gol_g1_dashboard/PulseDashESP/data/
-│   ├── index.html          ← HTML principal (patches injetados pelo sync.js)
-│   ├── style.css           ← Estilos (30fps, GPU compositing, sem 1px bug)
+│   ├── index.html          ← HTML principal (handler de erros, cpanel, modais)
+│   ├── style.css           ← Estilos (GPU compositing, fontes +2px vs v6.0)
 │   └── js/
 │       ├── state.js        ← Sensores, config default, SMOOTH_K
-│       ├── main.js         ← Loop 30fps, WebSocket/BT fallback, computador de bordo
+│       ├── main.js         ← Loop 60fps, OBD overlay, variáveis globais de freq
 │       ├── renderers.js    ← Desenho Canvas (arcos, barras, agulhas, luzes espia)
-│       └── editor.js       ← Editor de layout drag-and-drop
+│       ├── editor.js       ← Editor de layout drag-and-drop, applyConfig robusto
+│       ├── transport.js    ← Bluetooth Serial nativo (initBluetoothSerial, subscribe)
+│       ├── perf.js         ← Cronômetro 0-100, Top 5, histórico de performance
+│       └── trip.js         ← Computador de bordo (distância, combustível, tempo)
 ├── android/                ← Projeto Android Studio (Gradle)
-└── sync.js                 ← Script que copia assets e injeta patches BT
+└── capacitor.config.json   ← Configuração do Capacitor
 ```
 
 ---
 
-## 🔧 Como o Sync Funciona
+## 🔧 Como Buildar (Antigravity CLI)
 
-O `npm run android-sync` executa o `sync.js`, que:
-1. Copia todos os arquivos de `gol_g1_dashboard/PulseDashESP/data/` → `www/`
-2. Injeta `capacitor.js` no `index.html`
-3. Injeta o inicializador condicional de Bluetooth no `main.js` via Regex
-4. Anexa as funções `initBluetoothSerial()` e `readBluetoothLoop()` ao final do `main.js`
-5. Roda `npx cap sync android` para copiar para o projeto Android
+O Antigravity agora compila o APK **sem abrir o Android Studio**:
 
-**Comando completo de build:**
 ```powershell
-# No diretório PulseDashAPP:
-npm run android-sync
+# 1. Copiar assets do laboratório para o www
+Copy-Item -Path "gol_g1_dashboard\PulseDashESP\data\*" -Destination "PulseDashAPP\www" -Force -Recurse
 
-# No diretório android/:
+# 2. Sincronizar com o projeto Android nativo
+cd PulseDashAPP; npx cap sync android
+
+# 3. Compilar o APK
 $env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
-$env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
-.\gradlew.bat assembleDebug --quiet
+cd android; .\gradlew assembleDebug
+
+# 4. Copiar APK para a pasta de releases
+Copy-Item "app\build\outputs\apk\debug\app-debug.apk" "APK\PulseDash_v6.2.apk"
 ```
 
-**APK gerado:** `android/app/build/outputs/apk/debug/app-debug.apk`  
-**APK copiado:** `PulseDash v6.0/app-debug.apk`
+**APK de Release:** `C:\Users\Buia\.gemini\antigravity\scratch\APK\PulseDash_v6.2.apk`
 
 ---
 
@@ -54,14 +55,15 @@ $env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
 | Parâmetro | Valor |
 |:---|:---|
 | Protocolo | Bluetooth Classic (SPP / RFCOMM) |
-| Nome do dispositivo ESP32 | `PulseScan` |
-| Formato dos dados | JSON compactado, 1 linha por pacote |
-| Frequência | 20Hz (50ms entre pacotes) |
-| Fallback | Se BT cair, tenta WebSocket Wi-Fi |
+| Nome do dispositivo ESP32 | `PULSESCAN` |
+| Formato dos dados | JSON compactado, 1 linha por pacote (`\n`) |
+| Frequência de transmissão | ~33Hz (30ms entre pacotes) |
+| Delimitador | `\n` (subscribe via `bluetoothSerial.subscribe('\n', ...)`) |
+| Auto-reconexão | Sim — `setTimeout(initBluetoothSerial, 4000~6000)` |
 
-**Exemplo de pacote recebido:**
+**Exemplo de pacote recebido (v6.2):**
 ```json
-{"rpm":1450,"speed":0,"throttle":24,"pedal":20,"load":15,"boost":35.2,"coolant":87,"catalyst":420,"ambient":28,"fuelLevel":47,"ethanol":72,"voltage":13.8,"fuelRate":1.2,"tripDist":0,"maf":8.5,"obd_state":4}
+{"rpm":1450,"speed":0,"throttle":24,"pedal":20,"load":15,"fuelRate":1.2,"boost":35.2,"coolant":87,"catalyst":420,"ambient":28,"ethanol":72,"voltage":13.8,"fuelLevel":47,"transTemp":72,"oilPres":2.3,"oilTemp":88,"tripDist":0,"tripFuel":0.000,"tripTimeTot":0,"tripTimeDri":0,"obd_state":4}
 ```
 
 ---
@@ -70,36 +72,46 @@ $env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
 
 | Configuração | Valor | Motivo |
 |:---|:---|:---|
-| FPS | **30fps** | Metade da carga de CPU — celulares lentos |
-| Throttle | 33ms entre frames | `ts - lastRenderTs < 33` |
+| FPS | **60fps** | `requestAnimationFrame` sem throttle |
 | GPU compositing | `will-change: transform` | Scroll de páginas na GPU |
 | Smooth K — Carga | `0.12` | Inércia suave (era 1.0 = saltos) |
 | Smooth K — RPM/Vel | `0.10` | Resposta rápida |
 | Smooth K — Temps | `0.30` | Sensores lentos, sem oscilar |
+| Fontes | **+2px** vs v6.0 | Melhor legibilidade no celular |
 
 ---
 
-## 🐛 Bugs Corrigidos na v6.0
+## 🐛 Bugs Corrigidos
 
+### v6.0
 | Bug | Sintoma | Fix |
 |:---|:---|:---|
-| MAP travado | Ponteiro parado em 193 kPa | Grava `-1` no timeout → fallback recalcula sempre |
-| Consumo travado | Sempre 1.0 L/h | Mesmo fix do MAP |
-| Lag intermitente | Painel engasgava a cada ~1s | Timeout PID 25ms→12ms + 30fps cap |
+| MAP travado | Ponteiro parado em 193 kPa | Grava `-999` no timeout → fallback recalcula |
+| Consumo travado | Sempre 1.0 L/h | Fallback estequiométrico Flex (MAF + Etanol) |
+| Lag intermitente | Painel engasgava a cada ~1s | Timeout PID + 30fps cap |
 | Linha 1px no topo | Borda piscando no topo da tela | `#ov-bar::after` removido |
 | Carga com saltos | Agulha pulava em vez de deslizar | `SMOOTH_K.load: 1.0 → 0.12` |
 | Starvation | Sensores lentos nunca eram lidos | Scheduler circular 10 slots |
+
+### v6.2
+| Bug | Sintoma | Fix |
+|:---|:---|:---|
+| Tela vermelha ao conectar BT | `Script error. Linha: 0:0` | Filtro no `window.onerror` ignora falsos positivos ES6 |
+| Menu OBD crashava | `_freqHz is not defined` | Declaração das 4 variáveis globais no topo do `main.js` |
+| Relógios duplicavam | Girar o celular dobrava os widgets | `swapOrientation` limpa camadas específicas |
+| Cores dos arcos não salvavam | Reset de cor ao salvar | `applyConfig` ignora inputs `display:none` |
+| Botão ↔ sumiu | Sem forma de trocar lado do editor | Restaurado no cabeçalho do `cpanel` |
 
 ---
 
 ## 📲 Instalação no Celular
 
-1. Transferir `app-debug.apk` para o celular
+1. Transferir `PulseDash_v6.2.apk` para o celular
 2. Permitir "Instalar de fontes desconhecidas" nas configurações
 3. Instalar o APK
-4. Parear o celular com o ESP32 via Bluetooth (nome: `PulseScan`)
-5. Abrir o app → tocar no botão de conexão BT
-6. Ligar a ignição do Onix → aguardar handshake (~3-5 segundos)
+4. Parear o celular com o ESP32 via Bluetooth (nome: `PULSESCAN`)
+5. Ligar a ignição do Onix → o app conecta automaticamente em ~3-5 segundos
+6. Tocar no ícone de antena para abrir o menu OBD e verificar o status
 
 ---
 
