@@ -1,6 +1,6 @@
 # ⚙️ PulseDash — Hub de Desenvolvimento
 
-> **Versão Atual: v6.2** | Status: ✅ **TESTADO NO CARRO** | Protocolo: **CAN Bus 29-bit (TWAI) + Bluetooth Classic**
+> **Versão Atual: v6.4** | Status: ✅ **TESTADO NO CARRO** | Protocolo: **CAN Bus 29-bit (TWAI) + Bluetooth Classic**
 
 Bem-vindo à base de conhecimento central do **PulseDash**, o painel de instrumentos digital premium construído do zero para o **Onix 2026**, servindo também como plataforma universal para outros veículos.
 
@@ -27,7 +27,7 @@ O projeto evoluiu de uma ideia com ELM327 Bluetooth para um sistema de **leitura
 
 ---
 
-## 📊 Estado Atual do Sistema (v6.2 — TESTADO NO CARRO)
+## 📊 Estado Atual do Sistema (v6.4 — TESTADO NO CARRO)
 
 | Componente | Status | Detalhe |
 |:---|:---:|:---|
@@ -48,9 +48,9 @@ O projeto evoluiu de uma ideia com ELM327 Bluetooth para um sistema de **leitura
 | Temp. Ar | ✅ FUNCIONAL | PID `0x46`, ~0.28Hz |
 | Nível Combustível | ✅ FUNCIONAL | PID `0x2F` + Slosh Mitigation |
 | Etanol % | ✅ FUNCIONAL | PID `0x52`, startup + 5min |
-| Temp. Câmbio (UDS) | ✅ IMPLEMENTADO | Service 22, PID `0x1940` |
-| Pressão Óleo (UDS) | ✅ IMPLEMENTADO | Service 22, PID `0x115C` |
-| Temp. Óleo (UDS) | ✅ IMPLEMENTADO | Service 22, PID `0x1154` |
+| Temp. Câmbio (UDS) | ❌ FALHOU | Service 22 não respondido no carro |
+| Pressão Óleo (UDS) | ❌ FALHOU | Service 22 não respondido no carro |
+| Temp. Óleo (UDS) | ❌ FALHOU | Service 22 não respondido no carro |
 | App Android (APK) | ✅ FUNCIONAL | Capacitor + Bluetooth Serial |
 | Canvas 60fps | ✅ FUNCIONAL | requestAnimationFrame nativo |
 | Editor de Widgets | ✅ FUNCIONAL | Drag-and-drop, cores, tamanhos |
@@ -71,7 +71,9 @@ O projeto evoluiu de uma ideia com ELM327 Bluetooth para um sistema de **leitura
 | **v5.1** | 2026-05 | Timeout 100ms, handshake 10 tentativas, LED status, `vTaskDelay` 20ms. |
 | **v5.4.1** | 2026-05 | Suavização individual por ponteiro, cronômetro 0-100, histórico. |
 | **v6.0** | 2026-05-20 | **App Android nativo (APK).** Bluetooth Classic RFCOMM. Scheduler circular 10 slots. Canvas 30fps. 15 sensores confirmados. |
-| **v6.2** | 2026-05-23 | **Testado no carro.** Correções críticas de UI, fontes maiores, botão ↔ no editor, firmware compilado via arduino-cli, bugs de JS corrigidos. |
+| **v6.2** | 2026-05-23 | **Testado no carro.** Otimizações de UI e compilação CLI. UDS 22 testado sem sucesso. |
+| **v6.3** | 2026-05-24 | Remoção do *shadowBlur* para fim do thermal throttling no Android e adição de Lazy Render. |
+| **v6.4** | 2026-05-27 | Criação do *utils.js* (quebra de import circular), reset manual do painel, e alertas de storage cheio. |
 
 ---
 

@@ -4,8 +4,8 @@
 
 ---
 
-## 📅 Última Atualização: 2026-05-23
-**Versão Atual:** v6.2 — **TESTADO NO CARRO** ✅
+## 📅 Última Atualização: 2026-05-30
+**Versão Atual:** v6.6 — **OTIMIZADO PARA MOBILE** ✅
 
 ---
 
@@ -82,12 +82,12 @@ gol_g1_dashboard/PulseDashESP/data/js/
 
 | Bug | Causa | Status |
 |:---|:---|:---:|
-| `Script error. 0:0` ao conectar BT | WebView ES6 module isolation | ✅ RESOLVIDO |
-| `_freqHz is not defined` no menu OBD | Variáveis perdidas na refatoração | ✅ RESOLVIDO |
-| Relógios duplicam ao girar tela | `swapOrientation` limpava container inteiro | ✅ RESOLVIDO |
-| Cores dos arcos voltavam ao salvar | `applyConfig` lia inputs `display:none` | ✅ RESOLVIDO |
-| `}` faltando no `loop()` do .ino | Refatoração engoliu chave | ✅ RESOLVIDO |
-| Ícones APK com XML corrompido | BOM UTF-8 nos arquivos XML | ✅ RESOLVIDO |
+| `Script error. 0:0` ao conectar BT | WebView ES6 module isolation | ✅ RESOLVIDO (v6.2) |
+| Relógios duplicam ao girar tela | `swapOrientation` limpava container inteiro | ✅ RESOLVIDO (v6.2) |
+| Thermal Throttling e Lags no uso | Overhead de `ctx.shadowBlur` na CPU do mobile | ✅ RESOLVIDO (v6.3) |
+| Silent Boot Crash | Dependência circular de ES6 Modules resolvida com `utils.js` | ✅ RESOLVIDO (v6.4) |
+| Seleção impossível de widgets | Z-index bagunçado no clique; mudamos para colisão de área | ✅ RESOLVIDO (v6.5) |
+| Lag brutal na animação de Start | `drop-shadow` em máscara de texto travava a GPU móvel | ✅ RESOLVIDO (v6.6) |
 
 ---
 
@@ -95,7 +95,7 @@ gol_g1_dashboard/PulseDashESP/data/js/
 
 | Arquivo | Localização |
 |:---|:---|
-| APK de Release | `scratch/APK/PulseDash_v6.2.apk` |
+| APK de Release | `scratch/APK/PulseDashV6.6.apk` |
 | Firmware `.bin` | `scratch/APK/Firmware/PulseDashESP_BT.ino.bin` |
 | Código ESP32 | `scratch/PulseDash v6.0/PulseDashESP_BT/PulseDashESP_BT.ino` |
 | Laboratório Web | `scratch/gol_g1_dashboard/PulseDashESP/data/` |

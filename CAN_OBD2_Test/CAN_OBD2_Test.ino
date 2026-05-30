@@ -17,6 +17,10 @@
 
 File logFile;
 bool supportedPIDs[256];
+bool useExtendedCAN = false; // false = 11-bit (Honda Fit), true = 29-bit (Onix)
+uint32_t ecuPhysicalRxId = 0; // ID físico de resposta da ECU capturado em tempo de execução
+
+
 
 // ── Descrições amigáveis dos PIDs padrão SAE ─────────────────────────────────
 String getPIDDesc(uint8_t pid) {
@@ -89,12 +93,18 @@ bool iniciarCAN() {
 bool enviarOBD(uint8_t modo, uint8_t pid) {
   twai_message_t m;
   memset(&m, 0, sizeof(m));
-  m.identifier = 0x18DB33F1; // Broadcast OBD2 29-bit
-  m.extd = 1;
+  if (useExtendedCAN) {
+    m.identifier = 0x18DB33F1; // Broadcast OBD2 29-bit
+    m.extd = 1;
+  } else {
+    m.identifier = 0x7DF;      // Broadcast OBD2 11-bit
+    m.extd = 0;
+  }
   m.data_length_code = 8;
   m.data[0] = 0x02; // 2 bytes de dados válidos adicionais
   m.data[1] = modo;
   m.data[2] = pid;
+  for (int i = 3; i < 8; i++) m.data[i] = 0xAA; // Padding para evitar rejeição
   return twai_transmit(&m, pdMS_TO_TICKS(20)) == ESP_OK;
 }
 
@@ -103,14 +113,49 @@ bool receberResposta(twai_message_t* r, uint8_t modoEsperado, uint8_t pidEsperad
   uint32_t t0 = millis();
   while(millis() - t0 < timeoutMs) {
     if(twai_receive(r, pdMS_TO_TICKS(1)) == ESP_OK) {
-      if(r->extd && r->identifier == 0x18DAF111) {
-        if(r->data[1] == (modoEsperado + 0x40) && r->data[2] == pidEsperado) {
-          return true;
+      if (useExtendedCAN) {
+        if(r->extd && (r->identifier == 0x18DAF111 || (r->identifier & 0xFFFF0000) == 0x18DA0000)) {
+          if(r->data[1] == (modoEsperado + 0x40) && r->data[2] == pidEsperado) {
+            ecuPhysicalRxId = r->identifier; // Salva o ID físico da ECU que respondeu
+            return true;
+          }
+        }
+      } else {
+        if(!r->extd && (r->identifier >= 0x7E8 && r->identifier <= 0x7EF)) {
+          if(r->data[1] == (modoEsperado + 0x40) && r->data[2] == pidEsperado) {
+            ecuPhysicalRxId = r->identifier; // Salva o ID físico da ECU que respondeu
+            return true;
+          }
         }
       }
     }
   }
   return false;
+}
+
+uint32_t getPhysicalTxId() {
+  if (ecuPhysicalRxId == 0) {
+    return useExtendedCAN ? 0x18DA11F1 : 0x7E0; // Fallback
+  }
+  if (useExtendedCAN) {
+    uint8_t source = ecuPhysicalRxId & 0xFF;
+    return 0x18DA0000 | (source << 8) | 0xF1; // Inverte target/source
+  } else {
+    return ecuPhysicalRxId - 8; // 0x7E8 -> 0x7E0
+  }
+}
+
+bool enviarOBDFisico(uint8_t modo, uint8_t pid) {
+  twai_message_t m;
+  memset(&m, 0, sizeof(m));
+  m.identifier = getPhysicalTxId();
+  m.extd = useExtendedCAN ? 1 : 0;
+  m.data_length_code = 8;
+  m.data[0] = 0x02; // 2 bytes válidos
+  m.data[1] = modo;
+  m.data[2] = pid;
+  for (int i = 3; i < 8; i++) m.data[i] = 0xAA; // Padding
+  return twai_transmit(&m, pdMS_TO_TICKS(20)) == ESP_OK;
 }
 
 // ── Transmite frame UDS Service 22 ──────────────────────────────────────────
@@ -368,96 +413,168 @@ void executarVarreduraCompleta() {
   }
 
   logMsg("Solicitando VIN (Chassi - 0902)...");
-  if (enviarOBD(0x09, 0x02)) {
+  if (enviarOBDFisico(0x09, 0x02)) {
     twai_message_t r;
-    if (receberResposta(&r, 0x09, 0x02, 300)) {
-      String rawVIN = "  Raw VIN Frame: ";
-      for (int i = 0; i < r.data_length_code; i++) {
-        if (r.data[i] < 0x10) rawVIN += "0";
-        rawVIN += String(r.data[i], HEX) + " ";
+    if (receberResposta(&r, 0x09, 0x02, 400)) {
+      uint8_t vin[32];
+      memset(vin, 0, sizeof(vin));
+      int vinLen = 0;
+      uint8_t frameType = (r.data[0] & 0xF0) >> 4;
+      
+      if (frameType == 0) {
+        int length = r.data[0] & 0x0F;
+        for (int i = 0; i < length - 3 && i < 17; i++) {
+          vin[vinLen++] = r.data[3 + i];
+        }
+      } 
+      else if (frameType == 1) {
+        int totalLen = ((r.data[0] & 0x0F) << 8) | r.data[1];
+        logMsg("  [ISO-TP] First Frame recebido! Tamanho do payload: " + String(totalLen) + " bytes.");
+        
+        // Em FF OBD2 Modo 9 PID 2: r.data[5..7] contêm os 3 primeiros bytes do VIN
+        for (int i = 5; i < 8; i++) {
+          vin[vinLen++] = r.data[i];
+        }
+        
+        uint32_t rxId = r.identifier;
+        uint32_t txFcId = 0;
+        
+        if (useExtendedCAN) {
+          uint8_t target = (rxId >> 8) & 0xFF;
+          uint8_t source = rxId & 0xFF;
+          txFcId = 0x18DA0000 | (source << 8) | target;
+        } else {
+          txFcId = rxId - 8;
+        }
+        
+        logMsg("  [ISO-TP] Enviando Flow Control para ID: 0x" + String(txFcId, HEX) + "...");
+        twai_message_t fc;
+        memset(&fc, 0, sizeof(fc));
+        fc.identifier = txFcId;
+        fc.extd = useExtendedCAN ? 1 : 0;
+        fc.data_length_code = 8;
+        fc.data[0] = 0x30; // Flow Control CTS
+        fc.data[1] = 0x00; // Block Size = 0
+        fc.data[2] = 0x00; // STmin = 0
+        for (int j = 3; j < 8; j++) fc.data[j] = 0xAA;
+        
+        if (twai_transmit(&fc, pdMS_TO_TICKS(20)) == ESP_OK) {
+          uint32_t tStart = millis();
+          while (millis() - tStart < 800 && vinLen < 17) {
+            twai_message_t cf;
+            if (twai_receive(&cf, pdMS_TO_TICKS(5)) == ESP_OK) {
+              if (cf.identifier == rxId) {
+                uint8_t cfType = (cf.data[0] & 0xF0) >> 4;
+                if (cfType == 2) { // Consecutive Frame
+                  for (int k = 1; k < 8 && vinLen < 17; k++) {
+                    vin[vinLen++] = cf.data[k];
+                  }
+                }
+              }
+            }
+          }
+        }
       }
-      logMsg(rawVIN);
+      
+      if (vinLen > 0) {
+        String vinStr = "";
+        for (int i = 0; i < vinLen; i++) {
+          if (isprint(vin[i])) vinStr += (char)vin[i];
+          else vinStr += '?';
+        }
+        logMsg("  ========================================");
+        logMsg("  -> CHASSI/VIN DECODIFICADO: " + vinStr);
+        logMsg("  ========================================");
+      } else {
+        logMsg("  [AVISO] Sem dados válidos do VIN.");
+      }
     } else {
       logMsg("  Sem resposta para o VIN (0902)");
     }
   }
 
-  // 3. Tenta obter o Ângulo do Volante via UDS (ABS/EBCM no ID 0x18DA28F1 / 0x18DAF128)
-  logMsg("\n========================================================");
-  logMsg(" EXTRAINDO DIREÇÃO E VOLANTE VIA UDS (ABS/EBCM)");
-  logMsg("========================================================");
-  logMsg("Solicitando Sessão de Diagnóstico Estendida no ABS (10 03)...");
-  if (enviarSessaoUDS(0x18DA28F1, 0x03)) {
-    twai_message_t r;
-    if (receberRespostaSessaoUDS(&r, 0x18DAF128, 0x03, 300)) {
-      logMsg("  [OK] Sessão Estendida ABS Ativa!");
-    } else {
-      logMsg("  [AVISO] ABS não respondeu Sessão Estendida, tentando ler direto...");
-    }
-  }
-
-  logMsg("Solicitando Ângulo do Volante (PID 0x2411)...");
-  if (enviarUDS(0x18DA28F1, 0x2411)) {
-    twai_message_t r;
-    if (receberRespostaUDS(&r, 0x18DAF128, 0x2411, 300)) {
-      logMsg("  [OK] Resposta de Volante Recebida!");
-      String rawVol = "  Raw RX: ";
-      for (int i = 0; i < r.data_length_code; i++) {
-        if (r.data[i] < 0x10) rawVol += "0";
-        rawVol += String(r.data[i], HEX) + " ";
-      }
-      logMsg(rawVol);
-      
-      uint8_t A = r.data[4];
-      uint8_t B = r.data[5];
-      float val = ((A * 256.0f + B) * 0.1f) - 3276.8f;
-      logMsg("  -> Ângulo do Volante Decodificado: " + String(val, 1) + " graus");
-    } else {
-      logMsg("  Sem resposta para o Ângulo do Volante (0x2411) no ABS");
-    }
-  }
-
-  // 4. Tenta obter a Pressão de Pneu (TPMS) via UDS (BCM no ID 0x18DA40F1 / 0x18DAF140)
-  logMsg("\n========================================================");
-  logMsg(" EXTRAINDO PRESSÃO DE PNEUS (TPMS) VIA UDS (BCM)");
-  logMsg("========================================================");
-  
-  logMsg("Solicitando Sessão de Diagnóstico Estendida na BCM (10 03)...");
-  bool bcmSessionOk = false;
-  if (enviarSessaoUDS(0x18DA40F1, 0x03)) {
-    twai_message_t r;
-    if (receberRespostaSessaoUDS(&r, 0x18DAF140, 0x03, 300)) {
-      logMsg("  [OK] Sessão Estendida BCM Ativa!");
-      bcmSessionOk = true;
-    } else {
-      logMsg("  [AVISO] BCM não respondeu Sessão Estendida, tentando ler de qualquer forma...");
-    }
-  }
-
-  uint16_t tpmsPids[4] = {0x281A, 0x281B, 0x281C, 0x281D};
-  String tpmsNames[4] = {"Dianteiro Esquerdo (FL)", "Dianteiro Direito (FR)", "Traseiro Esquerdo (RL)", "Traseiro Direito (RR)"};
-
-  for (int i = 0; i < 4; i++) {
-    logMsg("Solicitando " + tpmsNames[i] + " (PID 0x" + String(tpmsPids[i], HEX) + ")...");
-    if (enviarUDS(0x18DA40F1, tpmsPids[i])) {
+  // 3. Tenta obter o Ângulo do Volante e TPMS via UDS apenas se for Extended CAN (Onix)
+  if (useExtendedCAN) {
+    logMsg("\n========================================================");
+    logMsg(" EXTRAINDO DIREÇÃO E VOLANTE VIA UDS (ABS/EBCM) [ONIX]");
+    logMsg("========================================================");
+    logMsg("Solicitando Sessão de Diagnóstico Estendida no ABS (10 03)...");
+    if (enviarSessaoUDS(0x18DA28F1, 0x03)) {
       twai_message_t r;
-      if (receberRespostaUDS(&r, 0x18DAF140, tpmsPids[i], 300)) {
-        logMsg("  [OK] Resposta Recebida!");
-        String rawT = "  Raw RX: ";
-        for (int j = 0; j < r.data_length_code; j++) {
-          if (r.data[j] < 0x10) rawT += "0";
-          rawT += String(r.data[j], HEX) + " ";
+      if (receberRespostaSessaoUDS(&r, 0x18DAF128, 0x03, 300)) {
+        logMsg("  [OK] Sessão Estendida ABS Ativa!");
+      } else {
+        logMsg("  [AVISO] ABS não respondeu Sessão Estendida, tentando ler direto...");
+      }
+    }
+
+    logMsg("Solicitando Ângulo do Volante (PID 0x2411)...");
+    if (enviarUDS(0x18DA28F1, 0x2411)) {
+      twai_message_t r;
+      if (receberRespostaUDS(&r, 0x18DAF128, 0x2411, 300)) {
+        logMsg("  [OK] Resposta de Volante Recebida!");
+        String rawVol = "  Raw RX: ";
+        for (int i = 0; i < r.data_length_code; i++) {
+          if (r.data[i] < 0x10) rawVol += "0";
+          rawVol += String(r.data[i], HEX) + " ";
         }
-        logMsg(rawT);
+        logMsg(rawVol);
         
         uint8_t A = r.data[4];
-        float pressPsi = A * 0.145038f;
-        logMsg("  -> Pressão Decodificada: " + String(pressPsi, 1) + " PSI (" + String(A) + " kPa)");
+        uint8_t B = r.data[5];
+        float val = ((A * 256.0f + B) * 0.1f) - 3276.8f;
+        logMsg("  -> Ângulo do Volante Decodificado: " + String(val, 1) + " graus");
       } else {
-        logMsg("  Sem resposta para o " + tpmsNames[i] + " (0x" + String(tpmsPids[i], HEX) + ")");
+        logMsg("  Sem resposta para o Ângulo do Volante (0x2411) no ABS");
       }
     }
-    delay(50); // pausa amigável
+
+    logMsg("\n========================================================");
+    logMsg(" EXTRAINDO PRESSÃO DE PNEUS (TPMS) VIA UDS (BCM) [ONIX]");
+    logMsg("========================================================");
+    logMsg("Solicitando Sessão de Diagnóstico Estendida na BCM (10 03)...");
+    bool bcmSessionOk = false;
+    if (enviarSessaoUDS(0x18DA40F1, 0x03)) {
+      twai_message_t r;
+      if (receberRespostaSessaoUDS(&r, 0x18DAF140, 0x03, 300)) {
+        logMsg("  [OK] Sessão Estendida BCM Ativa!");
+        bcmSessionOk = true;
+      } else {
+        logMsg("  [AVISO] BCM não respondeu Sessão Estendida, tentando ler...");
+      }
+    }
+
+    uint16_t tpmsPids[4] = {0x281A, 0x281B, 0x281C, 0x281D};
+    String tpmsNames[4] = {"Dianteiro Esquerdo (FL)", "Dianteiro Direito (FR)", "Traseiro Esquerdo (RL)", "Traseiro Direito (RR)"};
+
+    for (int i = 0; i < 4; i++) {
+      logMsg("Solicitando " + tpmsNames[i] + " (PID 0x" + String(tpmsPids[i], HEX) + ")...");
+      if (enviarUDS(0x18DA40F1, tpmsPids[i])) {
+        twai_message_t r;
+        if (receberRespostaUDS(&r, 0x18DAF140, tpmsPids[i], 300)) {
+          logMsg("  [OK] Resposta Recebida!");
+          String rawT = "  Raw RX: ";
+          for (int j = 0; j < r.data_length_code; j++) {
+            if (r.data[j] < 0x10) rawT += "0";
+            rawT += String(r.data[j], HEX) + " ";
+          }
+          logMsg(rawT);
+          
+          uint8_t A = r.data[4];
+          float pressPsi = A * 0.145038f;
+          logMsg("  -> Pressão Decodificada: " + String(pressPsi, 1) + " PSI (" + String(A) + " kPa)");
+        } else {
+          logMsg("  Sem resposta para o " + tpmsNames[i] + " (0x" + String(tpmsPids[i], HEX) + ")");
+        }
+      }
+      delay(50);
+    }
+  } else {
+    logMsg("\n========================================================");
+    logMsg(" CONSULTAS UDS PROPRIETÁRIAS (ABS/TPMS) [OMITIDAS]");
+    logMsg("========================================================");
+    logMsg("  [INFO] Veículo 11-bit padrão detectado (ex: Honda Fit).");
+    logMsg("  [INFO] As consultas UDS proprietárias do Chevrolet Onix 2026 foram omitidas.");
   }
   
   logMsg("\n========================================================");
@@ -528,13 +645,54 @@ void setup() {
   }
   logMsg("CAN 500kbps ... [OK]");
 
-  // 1. Handshake inicial rápido
+  // ── DETECÇÃO AUTOMÁTICA DE PROTOCOLO (11-bit vs 29-bit) ───────────────────
+  logMsg("\n[DETECÇÃO] Procurando protocolo OBD2 ativo...");
+  bool detectado = false;
+
+  // 1. Tenta handshake em 11-bit (Standard) - ideal para Honda Fit
+  logMsg("  -> Testando 11-bit Standard (ID 0x7DF)...");
+  useExtendedCAN = false;
+  for (int t = 0; t < 3; t++) {
+    enviarOBD(0x01, 0x00);
+    twai_message_t r;
+    if (receberResposta(&r, 0x01, 0x00, 150)) {
+      logMsg("  [SUCESSO] Protocolo OBD2 11-bit Standard Detectado!");
+      detectado = true;
+      break;
+    }
+    delay(50);
+  }
+
+  // 2. Se falhar, tenta handshake em 29-bit (Extended) - ideal para Chevrolet Onix
+  if (!detectado) {
+    logMsg("  -> Sem resposta em 11-bit. Testando 29-bit Extended (ID 0x18DB33F1)...");
+    useExtendedCAN = true;
+    for (int t = 0; t < 3; t++) {
+      enviarOBD(0x01, 0x00);
+      twai_message_t r;
+      if (receberResposta(&r, 0x01, 0x00, 150)) {
+        logMsg("  [SUCESSO] Protocolo OBD2 29-bit Extended Detectado!");
+        detectado = true;
+        break;
+      }
+      delay(50);
+    }
+  }
+
+  if (!detectado) {
+    logMsg("  [AVISO] Nenhuma ECU respondeu ao handshake inicial (01 00).");
+    logMsg("  [AVISO] O carro está com a ignição ligada?");
+    logMsg("  -> Iniciando varredura no modo 11-bit Standard por padrão.");
+    useExtendedCAN = false;
+  }
+
+  // 3. Handshake Tester Present rápido para a sessão
   logMsg("[HANDSHAKE] Enviando Tester Present...");
-  uint8_t tp[8] = {0x02, 0x3E, 0x00, 0, 0, 0, 0, 0};
+  uint8_t tp[8] = {0x02, 0x3E, 0x00, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA};
   twai_message_t tmp;
   memset(&tmp, 0, sizeof(tmp));
-  tmp.identifier = 0x18DB33F1; 
-  tmp.extd = 1; 
+  tmp.identifier = useExtendedCAN ? 0x18DB33F1 : 0x7DF; 
+  tmp.extd = useExtendedCAN ? 1 : 0; 
   tmp.data_length_code = 8;
   memcpy(tmp.data, tp, 8);
   twai_transmit(&tmp, pdMS_TO_TICKS(10));

@@ -18,17 +18,21 @@ body, html {
 
 #app { position: relative; width: 100%; height: 100%; overflow: hidden; }
 #pages-wrap { 
-  display: flex; gap: 50px; width: max-content; height: 915px; 
+  display: flex; gap: 1500px; width: max-content; height: 915px; 
   position: absolute; left: 0; top: 0; transform-origin: top left;
-  transition: transform 0.5s cubic-bezier(0.23, 1, 0.32, 1); 
+  transition: transform 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+  will-change: transform;
+  backface-visibility: hidden;
 }
-.page { flex: 0 0 412px; width: 412px; height: 915px; position: relative; z-index: 1; background-size: cover; background-position: center; }
+.page { position: relative; z-index: 1; background-size: cover; background-position: center; }
+#app.portrait-mode .page { flex: 0 0 412px; width: 412px; height: 915px; }
+#app.landscape-mode .page { flex: 0 0 915px; width: 915px; height: 412px; }
 
 .widget { position: absolute; cursor: pointer; border: 1px solid transparent; transition: border 0.3s, background 0.3s; }
 .widget.multi-sel { filter: drop-shadow(0 0 20px #9b00ff) drop-shadow(0 0 5px #fff); }
-.widget.em { border: 1px dashed rgba(255,255,255,0.15); }
-.widget.sel { border: 2px solid var(--roxo-c); background: rgba(155,0,255,0.08); box-shadow: var(--glow); z-index: 1500 !important; }
-.widget.moving { cursor: move; border: 2px solid var(--azul-c) !important; background: rgba(0, 242, 255, 0.1) !important; box-shadow: var(--glow-azul); z-index: 1600 !important; }
+.widget.em { border: 1.5px dashed rgba(255,255,255,0.4) !important; }
+.widget.sel { border: 2.5px solid var(--roxo-c) !important; background: rgba(155,0,255,0.12) !important; box-shadow: 0 0 15px rgba(189,0,255,0.7), inset 0 0 10px rgba(189,0,255,0.3) !important; }
+.widget.moving { cursor: move; border: 2px dashed var(--azul-c) !important; background: rgba(0, 242, 255, 0.15) !important; box-shadow: 0 0 15px rgba(0,242,255,0.7), inset 0 0 10px rgba(0,242,255,0.3) !important; }
 
 #pg-dots {
   position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%);
@@ -92,7 +96,7 @@ body, html {
   position: absolute; bottom: 20px; right: 20px; width: 45px; height: 45px;
   background: rgba(40,40,40,0.6); border: 1px solid rgba(100,100,100,0.3);
   border-radius: 50%; display: flex; align-items: center; justify-content: center;
-  font-size: 20px; color: #666; cursor: pointer; z-index: 220;
+  font-size: 22px; color: #666; cursor: pointer; z-index: 220;
   backdrop-filter: blur(5px); transition: 0.3s;
 }
 #fab.on { background: var(--roxo); color: #fff; transform: rotate(90deg); box-shadow: var(--glow); border-color: var(--roxo-c); }
@@ -104,12 +108,12 @@ body, html {
   padding: 0 20px; transform: translateY(-100%); transition: 0.4s; z-index: 210;
 }
 #ov-bar.active { transform: translateY(0); }
-#ov-bar h2 { font-family: 'Orbitron'; font-size: 11px; color: var(--roxo-c); letter-spacing: 2px; margin: 0; }
+#ov-bar h2 { font-family: 'Orbitron'; font-size: 13px; color: var(--roxo-c); letter-spacing: 2px; margin: 0; }
 
 .tbbtns { display: flex; gap: 8px; }
 .tbbtn {
   background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
-  color: #fff; padding: 5px 12px; border-radius: 4px; font-size: 8px;
+  color: #fff; padding: 5px 12px; border-radius: 4px; font-size: 10px;
   font-family: 'Orbitron'; cursor: pointer;
 }
 
@@ -117,10 +121,19 @@ body, html {
   position: absolute; left: 0; top: 0; width: var(--panel-w); height: 100%;
   background: rgba(10,10,10,0.98); backdrop-filter: blur(20px);
   border-right: none;
-  transform: translateX(-100%); transition: 0.4s cubic-bezier(0.1, 0.7, 0.1, 1);
-  z-index: 2000; padding: 30px 20px; overflow-y: auto;
+  transform: translateX(-100%); 
+  transition: transform 0.4s cubic-bezier(0.1, 0.7, 0.1, 1), visibility 0s linear 0.4s;
+  z-index: 2000; padding: 15px 15px 10px 15px;
+  display: flex; flex-direction: column; overflow: hidden; /* Trava o painel e o laser na tela */
+  pointer-events: none; /* Bloqueia toques fantasmas quando fechado */
+  visibility: hidden; /* Garante que saia da tela sem bugar o Webview */
 }
-#cpanel.open { transform: translateX(0); }
+#cpanel.open { 
+  transform: translateX(0); 
+  transition: transform 0.4s cubic-bezier(0.1, 0.7, 0.1, 1), visibility 0s linear 0s;
+  pointer-events: auto;
+  visibility: visible;
+}
 #cpanel.right { left: auto; right: 0; border-right: none; border-left: none; transform: translateX(100%); }
 #cpanel.right.open { transform: translateX(0); }
 
@@ -128,7 +141,7 @@ body, html {
   position: absolute; top: 50%; width: 60px; height: 60px;
   background: linear-gradient(135deg, var(--azul-c), var(--roxo-c)); color: #fff; border-radius: 50%;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  font-size: 22px; cursor: pointer; box-shadow: 0 0 25px rgba(0, 242, 255, 0.4);
+  font-size: 24px; cursor: pointer; box-shadow: 0 0 25px rgba(0, 242, 255, 0.4);
   border: 3px solid #fff; z-index: 2100; font-weight: bold;
   transform: translateY(-50%) scale(0); transition: 0.4s;
   visibility: hidden;
@@ -136,7 +149,7 @@ body, html {
 #mv-lock-btn.active { transform: translateY(-50%) scale(1); visibility: visible; }
 #cpanel:not(.right) ~ #mv-lock-btn { right: 30px; }
 #cpanel.right ~ #mv-lock-btn { left: 30px; }
-#mv-lock-btn span { font-size: 8px; font-family: 'Orbitron'; margin-top: 2px; }
+#mv-lock-btn span { font-size: 10px; font-family: 'Orbitron'; margin-top: 2px; }
 
 /* === LAYER PICKER (Tabelinha Flutuante de Sobreposição) === */
 #layer-picker {
@@ -151,7 +164,7 @@ body, html {
 #layer-picker.open { display: flex; }
 
 .lp-title {
-  font-family: 'Orbitron'; font-size: 8px; color: var(--roxo-c);
+  font-family: 'Orbitron'; font-size: 10px; color: var(--roxo-c);
   letter-spacing: 2px; padding: 4px 8px 8px; text-align: center;
   border-bottom: 1px solid rgba(155,0,255,0.3); margin-bottom: 4px;
 }
@@ -159,17 +172,17 @@ body, html {
   display: flex; align-items: center; gap: 10px;
   padding: 10px 12px; border-radius: 8px; cursor: pointer;
   transition: background 0.15s; color: #fff;
-  font-family: 'Rajdhani'; font-size: 16px; font-weight: 500;
+  font-family: 'Rajdhani'; font-size: 18px; font-weight: 500;
 }
 .lp-item:hover, .lp-item:active { background: rgba(155,0,255,0.25); }
-.lp-ic { font-size: 20px; }
+.lp-ic { font-size: 22px; }
 .lp-nome { flex: 1; }
-.lp-group-badge { font-size: 12px; opacity: 0.8; }
+.lp-group-badge { font-size: 14px; opacity: 0.8; }
 .lp-divider { height: 1px; background: rgba(255,255,255,0.08); margin: 4px 0; }
 .lp-join-btn {
   width: 100%; padding: 12px; border: 1px solid #0af; border-radius: 8px;
   background: rgba(0,170,255,0.1); color: #0af;
-  font-family: 'Orbitron'; font-size: 9px; letter-spacing: 2px;
+  font-family: 'Orbitron'; font-size: 11px; letter-spacing: 2px;
   cursor: pointer; transition: 0.2s;
 }
 .lp-join-btn:hover, .lp-join-btn:active { background: rgba(0,170,255,0.3); color: #fff; }
@@ -178,27 +191,48 @@ body, html {
 .btn-separar {
   width: 100%; padding: 14px; margin: 12px 0; border-radius: 8px;
   border: 1px solid #ff3355; background: rgba(255,51,85,0.1);
-  color: #ff3355; font-family: 'Orbitron'; font-size: 10px;
+  color: #ff3355; font-family: 'Orbitron'; font-size: 12px;
   letter-spacing: 1px; cursor: pointer; transition: 0.2s;
 }
 .btn-separar:hover, .btn-separar:active { background: rgba(255,51,85,0.3); color: #fff; }
 
 
-.ctitle { font-family: 'Orbitron'; font-size: 14px; color: #fff; letter-spacing: 2px; margin-bottom: 25px; border-bottom: 2px solid var(--roxo-c); padding-bottom: 15px; }
-.csec { font-family: 'Orbitron'; font-size: 13px; color: var(--roxo-c); margin: 30px 0 15px; letter-spacing: 1px; border-left: 4px solid var(--roxo-c); padding-left: 10px; background: rgba(155,0,255,0.05); padding-top: 5px; padding-bottom: 5px; }
-.fg { margin-bottom: 18px; }
-.fl { display: block; font-size: 11px; color: #aaa; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+.ctitle { font-family: 'Orbitron'; font-size: 14px; color: #fff; letter-spacing: 2px; margin-bottom: 12px; border-bottom: 2px solid var(--roxo-c); padding-bottom: 8px; text-align: center; }
+.csec { font-family: 'Orbitron'; font-size: 15px; color: var(--roxo-c); margin: 20px 0 10px; letter-spacing: 1px; border-left: 4px solid var(--roxo-c); padding-left: 10px; background: rgba(155,0,255,0.05); padding-top: 4px; padding-bottom: 4px; }
+.fg { margin-bottom: 14px; }
+.fl { display: block; font-size: 12px; color: #aaa; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
 .fsel, .finp {
   width: 100%; background: #1a1a1a; border: 1px solid #444; color: #fff;
-  padding: 12px; border-radius: 6px; font-family: 'Rajdhani'; font-size: 16px;
+  padding: 10px; border-radius: 6px; font-family: 'Rajdhani'; font-size: 16px;
 }
 .frange { width: 100%; accent-color: var(--roxo); cursor: pointer; height: 18px; }
-.fv { float: right; color: var(--roxo-c); font-weight: bold; font-size: 12px; }
+#c-ai { accent-color: #00ff88 !important; }
+#c-sw { accent-color: #ff3355 !important; }
+.fv { float: right; color: var(--roxo-c); font-weight: bold; font-size: 14px; }
+#cfg-fields {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 5px;
+  margin-bottom: 10px;
+}
+/* Barra de Rolagem Futurista e Fina para as Configurações */
+#cfg-fields::-webkit-scrollbar {
+  width: 4px;
+}
+#cfg-fields::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 2px;
+}
+#cfg-fields::-webkit-scrollbar-thumb {
+  background: var(--roxo-c);
+  border-radius: 2px;
+  box-shadow: 0 0 5px var(--roxo);
+}
 
-.pbtns { display: flex; gap: 8px; margin-top: 30px; padding-bottom: 40px; }
-.pbtn { flex: 1; padding: 15px; border-radius: 8px; border: none; font-family: 'Orbitron'; font-size: 12px; cursor: pointer; color: #fff; background: #222; transition: 0.2s; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
-.btn-sq { flex: 0 0 45px; font-size: 16px; display: flex; align-items: center; justify-content: center; }
-.pb-save { background: linear-gradient(135deg, var(--azul-c), var(--roxo-c)); color: #000; font-weight: bold; font-size: 11px; text-shadow: 0 1px 2px rgba(255, 255, 255, 0.4); box-shadow: 0 0 15px rgba(0, 242, 255, 0.3); }
+.pbtns { display: flex; gap: 8px; margin-top: 10px; padding-bottom: 10px; }
+.pbtn { flex: 1; padding: 12px; border-radius: 8px; border: none; font-family: 'Orbitron'; font-size: 13px; cursor: pointer; color: #fff; background: #222; transition: 0.2s; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+.btn-sq { flex: 0 0 42px; font-size: 16px; display: flex; align-items: center; justify-content: center; }
+.pb-save { background: linear-gradient(135deg, var(--azul-c), var(--roxo-c)); color: #000; font-weight: bold; font-size: 12px; text-shadow: 0 1px 2px rgba(255, 255, 255, 0.4); box-shadow: 0 0 15px rgba(0, 242, 255, 0.3); }
 
 #addmenu, #bgmenu {
   position: absolute; top: 0; left: 0; width: 100%; height: 100%;
@@ -209,13 +243,13 @@ body, html {
 .amcontent { background: #111; border: 1px solid #333; width: 85%; max-width: 420px; padding: 25px; border-radius: 12px; }
 .amgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 20px; }
 .amitem { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 10px; background: #1a1a1a; border-radius: 8px; cursor: pointer; }
-.amicon { font-size: 20px; }
-.amname { font-size: 8px; color: #777; text-align: center; }
+.amicon { font-size: 22px; }
+.amname { font-size: 10px; color: #777; text-align: center; }
 
 #toast {
   position: absolute; top: 60px; left: 50%; transform: translateX(-50%);
   background: rgba(10,10,10,0.9); border: 1px solid var(--roxo); color: #fff;
-  padding: 6px 15px; border-radius: 20px; font-size: 10px; opacity: 0;
+  padding: 6px 15px; border-radius: 20px; font-size: 12px; opacity: 0;
   transition: 0.3s; pointer-events: none; z-index: 3500; font-family:'Orbitron';
 }
 #toast.show { opacity: 1; }
@@ -239,8 +273,11 @@ body, html {
 /* --- SVG DO CIRCUITO PCB --- */
 #splash-pcb {
   position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-  z-index: 1; opacity: 0.9;
+  z-index: 1; opacity: 0;
   transition: opacity 0.8s cubic-bezier(0.25, 1, 0.5, 1);
+}
+#splash.active #splash-pcb {
+  opacity: 0.9;
 }
 #splash-pcb.fade-out {
   opacity: 0 !important;
@@ -273,7 +310,6 @@ body, html {
   stroke-width: 3.5;
   stroke-dasharray: 100 1000;
   stroke-dashoffset: 1100;
-  animation: laser-run 3.2s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
   will-change: stroke-dashoffset, opacity;
   transform: translate3d(0,0,0);
 }
@@ -300,6 +336,11 @@ body, html {
   width: 100%;
   max-width: 100vw;
   padding: 0 16px;
+  opacity: 0;
+  transition: opacity 0.8s cubic-bezier(0.25, 1, 0.5, 1);
+}
+#splash.active .splash-container {
+  opacity: 1;
 }
 
 /* Letreiro do Logo com pulso e brilho neon (Otimizado e Fluido) */
@@ -313,14 +354,16 @@ body, html {
   background-size: 200% auto;
   -webkit-background-clip: text;
   background-clip: text;
-  filter: drop-shadow(0 0 10px rgba(0, 242, 255, 0.4));
-  animation: logo-shine 3.6s linear infinite, logo-pulse-surge 3.0s ease-in-out forwards;
+  text-shadow: 0 0 12px rgba(0, 242, 255, 0.6);
   text-transform: uppercase;
   padding-left: clamp(6px, 2vw, 12px);
   transition: opacity 0.6s ease-in-out;
   width: 100%;
   will-change: transform, opacity;
   transform: translate3d(0, 0, 0);
+}
+#splash.active #splash-logo {
+  animation: logo-shine 3.6s linear infinite, logo-pulse-surge 3.0s ease-in-out forwards;
 }
 #splash-logo.fade-out {
   opacity: 0 !important;
@@ -370,7 +413,7 @@ body, html {
 
 /* Frases de Diagnóstico encurtadas e limpas */
 #splash-status {
-  font-family: 'Oxanium', monospace; font-size: 10.5px; font-weight: 700;
+  font-family: 'Oxanium', monospace; font-size: 12.5px; font-weight: 700;
   color: #00f2ff; letter-spacing: 1.5px; text-transform: uppercase;
   text-shadow: 0 0 5px rgba(0, 242, 255, 0.6);
   text-align: center;
@@ -390,8 +433,10 @@ body, html {
   width: 0%; height: 100%;
   background: linear-gradient(90deg, #9b00ff, #00f2ff);
   box-shadow: 0 0 8px #00f2ff;
-  animation: fill-prog 3.0s cubic-bezier(0.1, 0.8, 0.1, 1) forwards;
   will-change: width;
+}
+#splash.active #progress-fill {
+  animation: fill-prog 3.0s cubic-bezier(0.1, 0.8, 0.1, 1) forwards;
 }
 @keyframes fill-prog {
   0% { width: 0%; }
@@ -404,10 +449,13 @@ body, html {
 .scan-line {
   position: absolute; left: 0; width: 100%; height: 2px;
   background: linear-gradient(90deg, rgba(0,242,255,0), #00f2ff, rgba(0,242,255,0));
-  filter: drop-shadow(0 0 8px #00f2ff);
+  box-shadow: 0 0 8px #00f2ff;
   z-index: 6; pointer-events: none;
-  animation: scan-move 3.0s cubic-bezier(0.25, 0, 0.25, 1) forwards;
+  opacity: 0;
   will-change: top, opacity;
+}
+#splash.active .scan-line {
+  animation: scan-move 3.0s cubic-bezier(0.25, 0, 0.25, 1) forwards;
 }
 #splash.reveal .scan-line {
   display: none;
@@ -425,7 +473,7 @@ body, html {
   position: absolute; bottom: 20px; left: 20px; width: 45px; height: 45px;
   background: rgba(40,40,40,0.6); border: 1px solid rgba(100,100,100,0.3);
   border-radius: 50%; display: flex; align-items: center; justify-content: center;
-  font-size: 18px; cursor: pointer; z-index: 220;
+  font-size: 20px; cursor: pointer; z-index: 220;
   backdrop-filter: blur(5px); transition: 0.4s;
 }
 #bt-fab.scanning {
@@ -467,7 +515,7 @@ body, html {
 }
 
 .obd-title {
-  font-family: 'Orbitron'; font-size: 14px; color: #fff;
+  font-family: 'Orbitron'; font-size: 16px; color: #fff;
   text-align: center; letter-spacing: 4px; margin-bottom: 30px;
   text-shadow: 0 0 10px rgba(255,255,255,0.3);
 }
@@ -509,18 +557,18 @@ body, html {
 .obd-line.ok { background: var(--verde); box-shadow: 0 0 8px var(--verde); }
 
 .obd-info { display: flex; flex-direction: column; }
-.obd-label { font-family: 'Orbitron'; font-size: 11px; color: #666; letter-spacing: 2px; }
+.obd-label { font-family: 'Orbitron'; font-size: 13px; color: #666; letter-spacing: 2px; }
 .obd-step.active .obd-label { color: #00f2ff; text-shadow: 0 0 5px rgba(0,242,255,0.5); }
 .obd-step.ok .obd-label { color: var(--verde); text-shadow: 0 0 5px rgba(0,255,170,0.5); }
 .obd-step.fail .obd-label { color: #ff0055; text-shadow: 0 0 5px rgba(255,0,85,0.5); }
 
-.obd-detail { font-size: 11px; color: #444; margin-top: 2px; font-family: 'Rajdhani'; font-weight: 500; }
+.obd-detail { font-size: 13px; color: #444; margin-top: 2px; font-family: 'Rajdhani'; font-weight: 500; }
 .obd-step.active .obd-detail { color: #aaa; }
 .obd-step.ok .obd-detail { color: #aaa; }
 .obd-step.fail .obd-detail { color: #ff88aa; }
 
 .obd-status {
-  text-align: center; font-family: 'Orbitron'; font-size: 9px;
+  text-align: center; font-family: 'Orbitron'; font-size: 11px;
   color: #555; letter-spacing: 2px; margin-bottom: 25px;
   padding: 12px; background: rgba(0,0,0,0.5);
   border-top: 1px solid #222; border-bottom: 1px solid #222;
@@ -528,7 +576,7 @@ body, html {
 
 .obd-close-btn {
   width: 100%; padding: 14px; border-radius: 4px; border: 1px solid var(--roxo-c);
-  font-family: 'Orbitron'; font-size: 11px; cursor: pointer;
+  font-family: 'Orbitron'; font-size: 13px; cursor: pointer;
   background: rgba(155,0,255,0.05); color: var(--roxo-c);
   letter-spacing: 2px; transition: 0.3s;
 }
@@ -550,7 +598,7 @@ body, html {
   background: rgba(10,10,10,0.6); border: 1px solid rgba(100,100,100,0.3);
   width: 32px; height: 32px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font-size: 16px; cursor: pointer; z-index: 220;
+  font-size: 18px; cursor: pointer; z-index: 220;
   backdrop-filter: blur(5px); transition: 0.3s;
 }
 #perf-btn:hover { background: rgba(40,40,40,0.8); border-color: var(--roxo-c); }
@@ -574,7 +622,7 @@ body, html {
   position: absolute; top: -15px; left: 50%; transform: translateX(-50%);
   background: #000; border: 2px solid #222; color: #222;
   padding: 5px 25px; border-radius: 20px; font-family: 'Orbitron';
-  font-size: 12px; font-weight: 900; letter-spacing: 4px;
+  font-size: 14px; font-weight: 900; letter-spacing: 4px;
   transition: 0.5s; opacity: 0.5;
 }
 #perf-ready-flag.active {
@@ -587,15 +635,15 @@ body, html {
   50% { transform: translateX(-50%) scale(1.1); }
 }
 
-.perf-title { font-family: 'Orbitron'; font-size: 10px; color: #666; letter-spacing: 4px; margin-bottom: 30px; }
+.perf-title { font-family: 'Orbitron'; font-size: 12px; color: #666; letter-spacing: 4px; margin-bottom: 30px; }
 
 .perf-main-speed { margin-bottom: 20px; }
-#perf-speed { font-family: 'Orbitron'; font-size: 80px; font-weight: 900; color: #fff; text-shadow: 0 0 20px rgba(255,255,255,0.3); }
-.perf-unit { font-size: 14px; color: #444; margin-left: 5px; }
+#perf-speed { font-family: 'Orbitron'; font-size: 82px; font-weight: 900; color: #fff; text-shadow: 0 0 20px rgba(255,255,255,0.3); }
+.perf-unit { font-size: 16px; color: #444; margin-left: 5px; }
 
 .perf-timer { background: rgba(255,255,255,0.03); padding: 20px; border-radius: 10px; margin-bottom: 30px; border: 1px solid rgba(255,255,255,0.05); }
-#perf-timer-val { font-family: 'Oxanium'; font-size: 45px; color: var(--verde); letter-spacing: 2px; }
-.perf-sec { font-size: 12px; color: #444; margin-left: 5px; }
+#perf-timer-val { font-family: 'Oxanium'; font-size: 47px; color: var(--verde); letter-spacing: 2px; }
+.perf-sec { font-size: 14px; color: #444; margin-left: 5px; }
 
 .perf-splits { display: flex; flex-direction: column; gap: 10px; margin-bottom: 30px; min-height: 50px; }
 .split {
@@ -604,13 +652,13 @@ body, html {
   animation: split-in 0.4s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards;
 }
 @keyframes split-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-.split span { font-family: 'Orbitron'; font-size: 10px; color: #aaa; text-transform: uppercase; }
-.split b { font-family: 'Oxanium'; font-size: 18px; color: #fff; }
+.split span { font-family: 'Orbitron'; font-size: 12px; color: #aaa; text-transform: uppercase; }
+.split b { font-family: 'Oxanium'; font-size: 20px; color: #fff; }
 
 .perf-footer { display: flex; gap: 15px; }
 .perf-btn-ui {
   flex: 1; padding: 15px; border-radius: 8px; border: 1px solid #333;
-  background: #1a1a1a; color: #fff; font-family: 'Orbitron'; font-size: 10px;
+  background: #1a1a1a; color: #fff; font-family: 'Orbitron'; font-size: 12px;
   cursor: pointer;
   transition: 0.3s;
 }
@@ -627,7 +675,7 @@ body, html {
   display: flex;
   justify-content: space-between;
   padding: 4px 8px;
-  font-size: 11px;
+  font-size: 13px;
   color: #aaa;
   border-bottom: 1px solid rgba(255,255,255,0.05);
 }
@@ -641,7 +689,7 @@ body, html {
   background: rgba(10,10,10,0.6); border: 1px solid rgba(100,100,100,0.3);
   width: 32px; height: 32px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font-size: 16px; cursor: pointer; z-index: 220;
+  font-size: 18px; cursor: pointer; z-index: 220;
   backdrop-filter: blur(5px); transition: 0.3s;
 }
 #trip-btn:hover { background: rgba(40,40,40,0.8); border-color: var(--roxo-c); }
@@ -670,7 +718,7 @@ body, html {
 }
 
 .trip-title {
-  font-family: 'Orbitron'; font-size: 10px; color: #666; letter-spacing: 4px; margin-bottom: 25px; text-align: center;
+  font-family: 'Orbitron'; font-size: 12px; color: #666; letter-spacing: 4px; margin-bottom: 25px; text-align: center;
 }
 
 .trip-stats-grid {
@@ -693,7 +741,7 @@ body, html {
 
 .trip-stat-label {
   font-family: 'Orbitron';
-  font-size: 9px;
+  font-size: 11px;
   color: #777;
   letter-spacing: 1px;
   margin-bottom: 6px;
@@ -702,7 +750,7 @@ body, html {
 
 .trip-stat-val {
   font-family: 'Oxanium';
-  font-size: 26px;
+  font-size: 28px;
   font-weight: 700;
   color: #fff;
   line-height: 1;
@@ -710,7 +758,7 @@ body, html {
 
 .trip-stat-unit {
   font-family: 'Rajdhani';
-  font-size: 10px;
+  font-size: 12px;
   color: #444;
   margin-top: 4px;
   font-weight: bold;
@@ -738,7 +786,7 @@ body, html {
 
 .trip-timer-item span {
   font-family: 'Orbitron';
-  font-size: 8px;
+  font-size: 10px;
   color: #555;
   letter-spacing: 1px;
   margin-bottom: 4px;
@@ -746,7 +794,7 @@ body, html {
 
 .trip-timer-item b {
   font-family: 'Oxanium';
-  font-size: 14px;
+  font-size: 16px;
   color: var(--azul-c);
 }
 
@@ -770,7 +818,7 @@ body, html {
 
 .trip-cfg-row label {
   font-family: 'Orbitron';
-  font-size: 9px;
+  font-size: 11px;
   color: #aaa;
   letter-spacing: 1px;
   flex: 1;
@@ -783,7 +831,7 @@ body, html {
   padding: 6px 12px;
   border-radius: 4px;
   font-family: 'Orbitron';
-  font-size: 12px;
+  font-size: 14px;
   width: 130px;
   text-align: center;
 }
@@ -805,7 +853,7 @@ body, html {
   background: #161616;
   color: #fff;
   font-family: 'Orbitron';
-  font-size: 10px;
+  font-size: 12px;
   cursor: pointer;
   transition: 0.3s;
   letter-spacing: 1px;
@@ -831,6 +879,38 @@ body, html {
 .trip-btn-ui:active {
   transform: scale(0.95);
 }
+
+/* --- TRIP HISTORY STYLES --- */
+.trip-hist-item {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(0, 242, 255, 0.1);
+  border-radius: 8px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: relative;
+  overflow: hidden;
+}
+.trip-hist-item::before {
+  content: ''; position: absolute; left: 0; top: 0; height: 100%; width: 3px;
+  background: var(--cyan);
+  box-shadow: 0 0 10px var(--cyan);
+}
+.trip-hist-title {
+  font-family: 'Orbitron'; font-size: 11px; color: #fff;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.trip-hist-stats {
+  display: flex; gap: 10px; font-family: 'Rajdhani';
+}
+.trip-hist-stat {
+  flex: 1; background: rgba(0,0,0,0.4); border-radius: 4px; padding: 5px;
+  text-align: center; display: flex; flex-direction: column;
+}
+.trip-hist-stat span:first-child { font-size: 9px; color: #aaa; margin-bottom: 2px; }
+.trip-hist-stat span:last-child { font-size: 13px; color: var(--roxo-c); font-weight: bold; }
+
 
 /* --- JANELAS E MENUS COM BORDA LASER CYBERPUNK (PALETA 40 WLED) --- */
 .hud-box, .obd-card, .perf-card, .amcontent, .trip-card {
@@ -862,6 +942,7 @@ body, html {
   );
   animation: border-laser-spin 24s linear infinite;
   z-index: 1;
+  pointer-events: none !important;
 }
 
 /* Máscara interna para espessura fina de 1.5px da borda */
@@ -872,6 +953,7 @@ body, html {
   background: #080808;
   border-radius: 10.5px;
   z-index: 2;
+  pointer-events: none !important;
 }
 
 /* Joga todos os filhos diretos da janela para cima das pseudo-elements */
@@ -889,34 +971,12 @@ body, html {
 #ov-bar {
   overflow: hidden;
 }
-#ov-bar::after {
-  content: '';
-  position: absolute;
-  bottom: 0; left: 0;
-  width: 100%; height: 2px;
-  background: linear-gradient(90deg, 
-    transparent 0%, 
-    var(--azul-c) 30%, 
-    var(--roxo-c) 48%, 
-    var(--branco) 55%, 
-    var(--roxo-c) 62%, 
-    var(--azul-c) 80%, 
-    transparent 100%
-  );
-  background-size: 200% auto;
-  animation: bar-laser-sweep 16s linear infinite;
-  z-index: 10;
-}
-
-@keyframes bar-laser-sweep {
-  0% { background-position: 200% center; }
-  100% { background-position: -200% center; }
-}
+/* ::after removido — causava bug visual de 1px no topo quando ov-bar está escondido */
 
 /* --- FRONTEIRA LASER VERTICAL NO PAINEL DE AJUSTES (cpanel) --- */
 #cpanel::after {
   content: '';
-  position: absolute;
+  position: absolute; /* Como o cpanel agora é overflow: hidden e não rola, o absolute vira um escudo fixo perfeito */
   top: 0; right: 0;
   width: 2px; height: 100%;
   background: linear-gradient(180deg, 
@@ -1006,7 +1066,7 @@ body, html {
   }
   
   #perf-speed {
-    font-size: 55px !important;
+    font-size: 57px !important;
   }
   
   .perf-main-speed {
@@ -1019,7 +1079,7 @@ body, html {
   }
   
   #perf-timer-val {
-    font-size: 35px !important;
+    font-size: 37px !important;
   }
   
   .perf-splits {
@@ -1032,7 +1092,7 @@ body, html {
   }
   
   .split b {
-    font-size: 15px !important;
+    font-size: 17px !important;
   }
   
   .perf-btn-ui {
@@ -1067,7 +1127,7 @@ body, html {
   }
   
   .trip-stat-val {
-    font-size: 20px !important;
+    font-size: 22px !important;
   }
   
   .trip-timers {
@@ -1076,7 +1136,7 @@ body, html {
   }
   
   .trip-timer-item b {
-    font-size: 12px !important;
+    font-size: 14px !important;
   }
   
   .trip-configs {
@@ -1091,7 +1151,7 @@ body, html {
 }
 
 #btn-trip-edit-price {
-  font-size: 14px;
+  font-size: 16px;
   cursor: pointer;
   opacity: 0.6;
   transition: all 0.2s ease-in-out;
@@ -1106,3 +1166,102 @@ body, html {
   transform: scale(0.95);
 }
 
+/* --- TRIP HISTORY MENU CSS --- */
+.trip-hist-item {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+}
+.trip-hist-item:hover {
+  background: rgba(155, 0, 255, 0.1);
+  border-color: rgba(155, 0, 255, 0.4);
+  box-shadow: 0 0 15px rgba(155, 0, 255, 0.2);
+}
+.trip-hist-title {
+  display: flex;
+  justify-content: space-between;
+  font-family: 'Orbitron';
+  font-size: 13px;
+  color: #fff;
+  letter-spacing: 1px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  padding-bottom: 6px;
+}
+.trip-hist-stats {
+  display: flex;
+  justify-content: space-between;
+  gap: 5px;
+}
+.trip-hist-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  background: rgba(0,0,0,0.3);
+  padding: 8px 4px;
+  border-radius: 6px;
+}
+.trip-hist-stat span:first-child {
+  font-family: 'Orbitron';
+  font-size: 9px;
+  color: #777;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.trip-hist-stat span:last-child {
+  font-family: 'Rajdhani';
+  font-size: 15px;
+  font-weight: 700;
+  color: #c084ff;
+  white-space: nowrap;
+}
+
+/* --- TRIP DUAL PANEL TABS --- */
+.trip-tabs {
+  display: flex;
+  width: 100%;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  margin-bottom: 20px;
+  gap: 2px;
+}
+.trip-tab {
+  flex: 1;
+  text-align: center;
+  font-family: 'Orbitron';
+  font-size: 11px;
+  font-weight: 700;
+  color: #777;
+  padding: 12px 0;
+  cursor: pointer;
+  letter-spacing: 1.5px;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s ease-in-out;
+  text-transform: uppercase;
+}
+.trip-tab:hover {
+  color: #aaa;
+}
+.trip-tab.active {
+  color: var(--cyan);
+  border-bottom-color: var(--cyan);
+  text-shadow: 0 0 10px rgba(0, 242, 255, 0.4);
+}
+#tab-trip-a.active {
+  color: var(--roxo-c);
+  border-bottom-color: var(--roxo-c);
+  text-shadow: 0 0 10px rgba(189, 0, 255, 0.4);
+}
+.trip-tab-content {
+  display: none;
+  width: 100%;
+  flex-direction: column;
+}
+.trip-tab-content.active {
+  display: flex;
+}

@@ -1,6 +1,6 @@
 # 📱 App Android (APK)
 
-> **Versão:** v6.2 | **Status:** ✅ TESTADO NO CARRO  
+> **Versão:** v6.4 | **Status:** ✅ TESTADO NO CARRO  
 > **Framework:** Capacitor 6 + cordova-plugin-bluetooth-serial  
 > **Referência:** [[⚙️ Painel de Controle (Home)]] | [[🔌 Sensores e Comunicação]]
 
@@ -10,14 +10,15 @@
 
 ```
 PulseDashAPP/
-├── www/                    ← Assets web copiados de gol_g1_dashboard/PulseDashESP/data/
+├── www/                    ← Assets web copiados de PulseDash/PulseDashESP/data/
 │   ├── index.html          ← HTML principal (handler de erros, cpanel, modais)
 │   ├── style.css           ← Estilos (GPU compositing, fontes +2px vs v6.0)
 │   └── js/
 │       ├── state.js        ← Sensores, config default, SMOOTH_K
 │       ├── main.js         ← Loop 60fps, OBD overlay, variáveis globais de freq
-│       ├── renderers.js    ← Desenho Canvas (arcos, barras, agulhas, luzes espia)
+│       ├── renderers.js    ← Desenho Canvas (Lazy Render ativo)
 │       ├── editor.js       ← Editor de layout drag-and-drop, applyConfig robusto
+│       ├── utils.js        ← Utilidades puras (toast, utils math) - Fim do import circular
 │       ├── transport.js    ← Bluetooth Serial nativo (initBluetoothSerial, subscribe)
 │       ├── perf.js         ← Cronômetro 0-100, Top 5, histórico de performance
 │       └── trip.js         ← Computador de bordo (distância, combustível, tempo)
@@ -33,7 +34,7 @@ O Antigravity agora compila o APK **sem abrir o Android Studio**:
 
 ```powershell
 # 1. Copiar assets do laboratório para o www
-Copy-Item -Path "gol_g1_dashboard\PulseDashESP\data\*" -Destination "PulseDashAPP\www" -Force -Recurse
+Copy-Item -Path "PulseDash\PulseDashESP\data\*" -Destination "PulseDashAPP\www" -Force -Recurse
 
 # 2. Sincronizar com o projeto Android nativo
 cd PulseDashAPP; npx cap sync android
@@ -101,6 +102,14 @@ Copy-Item "app\build\outputs\apk\debug\app-debug.apk" "APK\PulseDash_v6.2.apk"
 | Relógios duplicavam | Girar o celular dobrava os widgets | `swapOrientation` limpa camadas específicas |
 | Cores dos arcos não salvavam | Reset de cor ao salvar | `applyConfig` ignora inputs `display:none` |
 | Botão ↔ sumiu | Sem forma de trocar lado do editor | Restaurado no cabeçalho do `cpanel` |
+
+### v6.3 / v6.4
+| Bug | Sintoma | Fix |
+|:---|:---|:---|
+| Thermal Throttling | Celular superaquecia em minutos de uso | Remoção de `ctx.shadowBlur` (gargalo de GPU sem aceleração) e adição de Lazy Render (`abs(val - last) > 0.05`). |
+| Silent Boot Crash | App travava de forma randômica logo na inicialização e o erro no console era mudo. | Extração de módulo circular. `main`, `trip` e `transport` referenciam `utils.js` agora para o `toast()`. |
+| Falha ao salvar imagem custom | Nenhuma mensagem quando a base64 não cabia no localStorage | Adicionado `alert()` interceptando `QuotaExceededError`. |
+| Widget não apagava (Ghosting) | Alterar o sensor no editor mantinha a agulha velha travada no visor | Limpeza forçada de `w._sv` e `w._lastDrawS` no `applyConfig()`. |
 
 ---
 

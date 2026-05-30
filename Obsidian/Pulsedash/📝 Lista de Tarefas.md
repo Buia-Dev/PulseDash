@@ -50,6 +50,13 @@
 - [x] **Repositório oficial sincronizado:** `PulseDashESP_BT/` só contém o `.ino`. `APK/` com APK + Firmware.
 - [x] **✅ TESTE NO CARRO:** Leitura confirmada no Onix 2026 — "ja ta lendo certim" (2026-05-23).
 
+### ✅ Fase 4 — Otimização e Estabilidade Máxima (v6.3 / v6.4)
+- [x] **Fim do Thermal Throttling:** Remoção do `ctx.shadowBlur` de todos os renderers que derretia a CPU em uso contínuo.
+- [x] **Lazy Render:** Renderizadores agora só limpam e redesenham o canvas se a variação for `> 0.05`.
+- [x] **Fim do Silent Boot Crash:** Criação do `utils.js` e eliminação da dependência circular entre arquivos.
+- [x] **Tratamento de Storage:** Adicionado `alert()` quando `QuotaExceededError` estoura ao salvar imagem de fundo.
+- [x] **Reset Manual de Página:** Botão físico adicionado para resetar widgets apenas da página atual em caso de bugs visuais.
+
 ## ✅ Concluído — Hardware e Firmware
 
 - [x] **Migração total para CAN Bus 29-bit nativo** (SN65HVD230 + TWAI).
@@ -71,9 +78,7 @@
 ## 🔜 Em Progresso / Próximos Passos
 
 ### 🧪 Testes de Campo (Em andamento — dias seguintes)
-- [ ] **Validar MAP físico em movimento:** PID `0x0B` retorna valor real ou sempre usa fallback virtual?
 - [ ] **Validar Consumo físico em movimento:** PID `0x5E` vs cálculo estequiométrico Flex — qual é mais preciso?
-- [ ] **Validar UDS em movimento:** Temp. Câmbio, Pressão e Temp. Óleo respondendo andando?
 - [ ] **Estabilidade do Bluetooth:** O app reconecta automaticamente após o carro desligar e a ESP reiniciar?
 - [ ] **Slosh Mitigation em curvas:** O algoritmo mantém o ponteiro de combustível estável em curvas fortes?
 
@@ -90,6 +95,10 @@
 - [ ] Montar circuito do optocoplador para captura de RPM via bobina de ignição.
 - [ ] Integrar GPS para velocidade real (sem OBD2).
 - [ ] Adaptar firmware para modo "carro antigo" sem CAN Bus.
+
+### ❌ Testes Falhados e Arquivados
+- [x] **PIDs UDS Service 22 (GM):** Temp. Câmbio (`0x1940`), Pressão Óleo (`0x115C`), Temp. Óleo (`0x1154`) — Desativados. O carro simplesmente não responde a estes requests na mesma rede ou eles exigem uma sessão de segurança diferente.
+- [x] **Validar MAP físico:** PID `0x0B` não responde. Fallback virtual foi adotado definitivamente.
 
 ---
 

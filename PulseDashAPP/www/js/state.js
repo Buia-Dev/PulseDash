@@ -3,44 +3,59 @@
 const ST = {
   pg: 0, editor: false, sel: null, moving: false, cfg: null,
   dados: {}, smooth: {},
-  cvs: {}, demoT: 0, wakeLock: null, imgList: [],
+  cvs: {}, wakeLock: null, imgList: [],
   fetching: false,
   booting: true, // Bloqueia UI durante animação
   widgetMap: new Map(), // Lookup O(1) de widgets
-  scale: 1 // Usado para o Auto-Scale responsivo
+  scale: 1, // Usado para o Auto-Scale responsivo
+  orientation: 'portrait', // 'portrait' ou 'landscape'
+  demoSpeed: 50 // Velocidade de varredura padrão do Modo Demo (50%)
 };
 
 const LOCAL_IMAGES = [
   'relogios/flames.webp',
   'relogios/gavioes.webp',
-  'relogios/pikachu.webp'
+  'relogios/pikachu.webp',
+  'relogios/bling.png',
+  'relogios/bullseye.png',
+  'relogios/circuit.png',
+  'relogios/invader.png',
+  'relogios/phantom.png',
+  'relogios/retro.png',
+  'relogios/supersport.png'
 ];
 
 const SENSORS_CONFIG = {
   demo:       { id: 'demo',       nome: '🤖 MODO DEMO',      unit: '',      grp: 'VIRTUAL' },
-  test:       { id: 'test',       nome: '🔌 POTENCIÔMETRO',   unit: 'raw',   grp: 'SISTEMA' },
   rpm:        { id: 'rpm',        nome: '🏎️ RPM',            unit: 'RPM',   grp: 'MOTOR' },
   speed:      { id: 'speed',      nome: '🏁 VELOCIDADE',      unit: 'KM/H',  grp: 'MOTOR' },
   throttle:   { id: 'throttle',   nome: '🦋 BORBOLETA',       unit: '%',     grp: 'MOTOR' },
   pedal:      { id: 'pedal',      nome: '🦶 PEDAL REAL',      unit: '%',     grp: 'MOTOR' },
   load:       { id: 'load',       nome: '💪 CARGA MOTOR',     unit: '%',     grp: 'MOTOR' },
-  fuelRate:   { id: 'fuelRate',   nome: '⛽ CONSUMO',         unit: 'L/h',    grp: 'MOTOR' },
-  boost:      { id: 'boost',      nome: '🐌 MAP/PRES. ADM',   unit: 'kPa',   grp: 'MOTOR' },
+  fuelRate:   { id: 'fuelRate',   nome: '💧 CONSUMO (L/h)',         unit: 'L/h',    grp: 'MOTOR' },
+  instCons:   { id: 'instCons',   nome: '🏎️ CONSUMO INST.',         unit: 'km/L',   grp: 'MOTOR' },
+  boost:      { id: 'boost',      nome: '🌬️ MAP/PRES. ADM',   unit: 'kPa',   grp: 'MOTOR' },
+  turbo:      { id: 'turbo',      nome: '🌬️ PRESSÃO TURBO',   unit: 'bar',   grp: 'MOTOR' },
+  maf:        { id: 'maf',        nome: '💨 FLUXO DE AR (MAF)',unit: 'g/s',   grp: 'MOTOR' },
+  oilPress:   { id: 'oilPress',   nome: '🛢️ PRESSÃO ÓLEO',    unit: 'bar',   grp: 'MOTOR' },
+  fuelPress:  { id: 'fuelPress',  nome: '⛽ PRES. COMBUSTÍVEL',unit: 'bar',   grp: 'MOTOR' },
+  
   coolant:    { id: 'coolant',    nome: '🌡️ ÁGUA',           unit: '°C',    grp: 'TEMPERATURA' },
   catalyst:   { id: 'catalyst',   nome: '🔥 CATALISADOR',     unit: '°C',    grp: 'TEMPERATURA' },
   ambient:    { id: 'ambient',    nome: '☀️ AR EXTERNO',      unit: '°C',    grp: 'TEMPERATURA' },
+  oilTemp:    { id: 'oilTemp',    nome: '🌡️ TEMP. ÓLEO',       unit: '°C',    grp: 'TEMPERATURA' },
+  iat:        { id: 'iat',        nome: '🌡️ TEMP. AR ADM (IAT)',unit: '°C',   grp: 'TEMPERATURA' },
+  egt:        { id: 'egt',        nome: '🔥 TEMP. ESCAPE (EGT)',unit: '°C',   grp: 'TEMPERATURA' },
+  
   ethanol:    { id: 'ethanol',    nome: '🌽 ETANOL',          unit: '%',     grp: 'MOTOR' },
   voltage:    { id: 'voltage',    nome: '🔋 VOLTAGEM ECU',    unit: 'V',     grp: 'SISTEMA' },
   fuelLevel:  { id: 'fuelLevel',  nome: '⛽ NÍVEL COMBUSTÍVEL', unit: '%',   grp: 'SISTEMA' },
 
-  // Novos sensores estendidos v6.0 (GM UDS & OBD2)
-  transTemp:  { id: 'transTemp',  nome: '🌡️ TEMP. CÂMBIO',    unit: '°C',    grp: 'TEMPERATURA' },
-  oilPres:    { id: 'oilPres',    nome: '🛢️ PRESSÃO ÓLEO',    unit: 'PSI',   grp: 'MOTOR' },
-  oilTemp:    { id: 'oilTemp',    nome: '🌡️ TEMP. ÓLEO',      unit: '°C',    grp: 'TEMPERATURA' },
-  tripDist:   { id: 'tripDist',   nome: '📏 ODÔMETRO TOTAL',   unit: 'KM',    grp: 'SISTEMA' },
+  afr:        { id: 'afr',        nome: '⚖️ MISTURA (AFR)',    unit: 'AFR',   grp: 'PERFORMANCE' },
+  lambda:     { id: 'lambda',     nome: 'λ SENSOR LAMBDA',    unit: 'λ',     grp: 'PERFORMANCE' },
+  timing:     { id: 'timing',     nome: '⏱️ PONTO IGNIÇÃO',    unit: '°',     grp: 'PERFORMANCE' },
 
   // Computador de bordo & Virtuais v6.0
-  econometer: { id: 'econometer', nome: '📊 ECONOMÔMETRO',    unit: '%',     grp: 'VIRTUAL' },
   tripDistance: { id: 'tripDistance', nome: '📏 VIAGEM DISTÂN.', unit: 'KM',  grp: 'VIAGEM' },
   tripFuel:   { id: 'tripFuel',   nome: '⛽ VIAGEM VOL.',     unit: 'L',     grp: 'VIAGEM' },
   tripAvgSpeed: { id: 'tripAvgSpeed', nome: '🏁 VIAGEM V. MÉD.', unit: 'KM/H',grp: 'VIAGEM' },
@@ -69,25 +84,37 @@ const TIPOS_INFO = [
   {id:'numero_puro', nome:'Número', ic:'🔢'},
   {id:'regua_pura', nome:'Régua', ic:'📏'},
   {id:'imagem_pura', nome:'Imagem Livre', ic:'🖼️'},
-  {id:'luz_espia', nome:'Luz (Alerta)', ic:'🚨'},
-  {id:'econometro_classico', nome:'Economômetro', ic:'⚡'}
+  {id:'luz_espia', nome:'Luz (Alerta)', ic:'🚨'}
 ];
 
 const CFG_DEF = {
-  paginas: [
-    { 
-      bg:{img:'',size:'cover'}, 
-      widgets:[
-        { id:'w1', tipo:'arco_puro', x:50, y:45, tamanho:400, cor:'#00f2ff', thickness:20, sensor:'demo', rotation:0, angIni:140, angSweep:260, lineCap:'round', opacity:1 },
-        { id:'w2', tipo:'regua_pura', x:50, y:45, tamanho:690, cor:'#ffffff', sensor:'demo', rStart:140, rCurv:260, rStyle:0, rFont:'Orbitron', rFontSz:16, rTickLen:25, rThick:3, rDens:5, rLabelOffset:20, rLabelSide:'outer', rTickSide:'inner', opacity:1 },
-        { id:'w3', tipo:'agulha_pura', x:50, y:45, tamanho:360, cor:'#ff0055', sensor:'demo', rotation:0, angIni:140, angSweep:260, tagulha:0, opacity:1 },
-        { id:'w4', tipo:'barra_pura', x:50, y:88, tamanho:320, cor:'#00ff88', thickness:15, sensor:'demo', rotation:0, direction:'h', divisores:15, spacing:3, cor2:'#ff0000', cor2Lim:80, opacity:1 },
-        { id:'w5', tipo:'numero_puro', x:50, y:45, tamanho:140, cor:'#ffffff', sensor:'demo', rotation:0, fontFamily:'Orbitron', unidade:'KM/H', opacity:1, maxValor:100, minValor:0 }
-      ] 
-    },
-    { bg:{img:'',size:'cover'}, widgets:[] },
-    { bg:{img:'',size:'cover'}, widgets:[] }
-  ]
+  orientations: {
+    portrait: [
+      { 
+        bg:{img:'',size:'cover'}, 
+        widgets:[
+          { id:'w1', tipo:'arco_puro', x:50, y:45, tamanho:400, cor:'#00f2ff', thickness:20, sensor:'demo', rotation:0, angIni:140, angSweep:260, lineCap:'round', opacity:1 },
+          { id:'w2', tipo:'regua_pura', x:50, y:45, tamanho:690, cor:'#ffffff', sensor:'demo', rStart:140, rCurv:260, rStyle:0, rFont:'Orbitron', rFontSz:16, rTickLen:25, rThick:3, rDens:5, rLabelOffset:20, rLabelSide:'outer', rTickSide:'inner', opacity:1 },
+          { id:'w3', tipo:'agulha_pura', x:50, y:45, tamanho:360, cor:'#ff0055', sensor:'demo', rotation:0, angIni:140, angSweep:260, tagulha:0, opacity:1 },
+          { id:'w4', tipo:'barra_pura', x:50, y:88, tamanho:320, cor:'#00ff88', thickness:15, sensor:'demo', rotation:0, direction:'h', divisores:15, spacing:3, cor2:'#ff0000', cor2Lim:80, opacity:1 },
+          { id:'w5', tipo:'numero_puro', x:50, y:45, tamanho:140, cor:'#ffffff', sensor:'demo', rotation:0, fontFamily:'Orbitron', unidade:'KM/H', opacity:1, maxValor:100, minValor:0 }
+        ] 
+      },
+      { bg:{img:'',size:'cover'}, widgets:[] },
+      { bg:{img:'',size:'cover'}, widgets:[] }
+    ],
+    landscape: [
+      { 
+        bg:{img:'',size:'cover'}, 
+        widgets:[
+          { id:'wl1', tipo:'arco_puro', x:50, y:50, tamanho:350, cor:'#00f2ff', thickness:20, sensor:'demo', rotation:0, angIni:140, angSweep:260, lineCap:'round', opacity:1 },
+          { id:'wl2', tipo:'numero_puro', x:50, y:50, tamanho:120, cor:'#ffffff', sensor:'demo', rotation:0, fontFamily:'Orbitron', unidade:'KM/H', opacity:1, maxValor:100, minValor:0 }
+        ] 
+      },
+      { bg:{img:'',size:'cover'}, widgets:[] },
+      { bg:{img:'',size:'cover'}, widgets:[] }
+    ]
+  }
 };
 
 // Inicialização dinâmica do estado de dados

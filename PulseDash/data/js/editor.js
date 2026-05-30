@@ -1,12 +1,20 @@
 'use strict';
 import { ST, SENSORS_CONFIG, LOCAL_IMAGES, TIPOS_INFO } from './state.js';
-import { saveToESP, toast, applyPageBg } from './main.js';
+import { toast, applyPageBg } from './utils.js';
+import { saveToESP } from './transport.js';
 
 function mkWidget(w,pgIdx){
   w.pg = pgIdx;
   const layer=document.getElementById(`wl-${pgIdx}`); if(!layer) return;
   const div=document.createElement('div');
-  div.className='widget'; div.id=`W-${w.id}`; div.style.left=w.x+'%'; div.style.top=w.y+'%';
+  div.id=`W-${w.id}`;
+  div.className='widget';
+  if(ST.editor) div.classList.add('em');
+  if(ST.sel === w.id) {
+    div.classList.add('sel');
+    if(ST.moving) div.classList.add('moving');
+  }
+  div.style.left=w.x+'%'; div.style.top=w.y+'%';
   div.style.zIndex = w.tipo === 'imagem_pura' ? -100 : 1000 - (w.tamanho || 200); div.style.opacity = w.opacity ?? 1; 
   div.style.transform = `translate(-50%, -50%) rotate(${w.rotation||0}deg)`;
 
@@ -56,6 +64,7 @@ function mkWidget(w,pgIdx){
     div.innerHTML=`<canvas width="${wW*2}" height="${wH*2}" style="display:block;width:100%;height:100%"></canvas>`;
     ST.cvs[w.id]={ctx:div.querySelector('canvas').getContext('2d'), cW:wW*2, cH:wH*2};
     ST.cvs[w.id].ctx.scale(2,2);
+    delete w._lastDrawS; // Força re-renderização inicial do lazy render em novos canvases (v6.5.1 fix)
   }
 
   const getXY = e => { let t = e.touches ? e.touches[0] : (e.changedTouches ? e.changedTouches[0] : e); return {x:t.clientX, y:t.clientY}; };
@@ -68,14 +77,17 @@ function mkWidget(w,pgIdx){
 
     // --- MODO MOVER: arrasta direto ---
     if(ST.moving) {
-      if(ST.sel !== w.id) selWidget(w.id, pgIdx);
+      if(ST.sel !== w.id) {
+        selWidget(w.id, pgIdx);
+        return; // Primeiro clique apenas seleciona; o próximo arrasta.
+      }
       e.stopPropagation(); e.preventDefault();
       const start=getXY(e), sl=w.x, st=w.y;
       const dragList = [];
       dragList.push({w: w, sl: w.x, st: w.y, el: div});
       // Arrasta membros do grupo junto
       if(w.grupo && w.grupo > 0) {
-        ST.cfg.paginas[pgIdx].widgets.forEach(cw => {
+        ST.cfg.orientations[ST.orientation][pgIdx].widgets.forEach(cw => {
           if(cw.grupo === w.grupo && cw.id !== w.id) {
             dragList.push({w: cw, sl: cw.x, st: cw.y, el: document.getElementById(`W-${cw.id}`)});
           }
@@ -83,9 +95,10 @@ function mkWidget(w,pgIdx){
       }
       const mv = ev => {
         const cur=getXY(ev);
-        // Otimização Auto-Scale: Dividimos pela escala atual, e usamos a base fixa do painel (412x915)
-        const dx = ((cur.x - start.x) / ST.scale) / 412 * 100;
-        const dy = ((cur.y - start.y) / ST.scale) / 915 * 100;
+        const baseW = ST.orientation === 'landscape' ? 915 : 412;
+        const baseH = ST.orientation === 'landscape' ? 412 : 915;
+        const dx = ((cur.x - start.x) / ST.scale) / baseW * 100;
+        const dy = ((cur.y - start.y) / ST.scale) / baseH * 100;
         
         dragList.forEach(m => { m.w.x=m.sl+dx; m.w.y=m.st+dy; if(m.el){m.el.style.left=m.w.x+'%'; m.el.style.top=m.w.y+'%';} });
         const fx=document.getElementById('c-x'), fy=document.getElementById('c-y');
@@ -96,44 +109,65 @@ function mkWidget(w,pgIdx){
         document.removeEventListener('mouseup',up); 
         document.removeEventListener('touchmove',mv); 
         document.removeEventListener('touchend',up); 
+        
+        let deletedAny = false;
+        const pRect = document.getElementById(`pg-${pgIdx}`).getBoundingClientRect();
+        
+        // Exclui widgets que ficaram < 25% dentro da tela de origem
+        dragList.forEach(m => {
+          if(!m.el) return;
+          const wRect = m.el.getBoundingClientRect();
+          const x_overlap = Math.max(0, Math.min(pRect.right, wRect.right) - Math.max(pRect.left, wRect.left));
+          const y_overlap = Math.max(0, Math.min(pRect.bottom, wRect.bottom) - Math.max(pRect.top, wRect.top));
+          const overlapArea = x_overlap * y_overlap;
+          const widgetArea = wRect.width * wRect.height;
+          
+          if(overlapArea / widgetArea < 0.25) {
+            const idx = ST.cfg.orientations[ST.orientation][pgIdx].widgets.findIndex(x => x.id == m.w.id);
+            if(idx >= 0) {
+              ST.cfg.orientations[ST.orientation][pgIdx].widgets.splice(idx, 1);
+              if(ST.sel == m.w.id) { ST.sel = null; closePanel(); }
+              rmWidget(m.w.id);
+              deletedAny = true;
+            }
+          }
+        });
+        
+        if (deletedAny) toast('🗑️ APAGADO (FORA DA TELA)');
         saveToESP(); // Salva a posição final após o término do arraste
       };
       document.addEventListener('mousemove',mv); document.addEventListener('mouseup',up); document.addEventListener('touchmove',mv,{passive:false}); document.addEventListener('touchend',up);
       return;
     }
 
-    // --- MODO SELEÇÃO: detecta sobreposição via elementsFromPoint ---
+    // --- MODO SELEÇÃO: detecta colisões no ponto exato do clique (x, y) ---
     const {x, y} = getXY(e);
     
-    // Pega o retângulo INTEIRO do widget que foi clicado
-    const clickedRect = div.getBoundingClientRect();
-    
-    // Encontra TODOS os widgets da página cujos retângulos se interceptam com o widget clicado
-    // Isso funciona mesmo clicando no canto — qualquer sobreposição conta!
     const layer = document.getElementById(`wl-${pgIdx}`);
     const hits = [];
     if(layer) {
       layer.querySelectorAll('.widget').forEach(el => {
         const r = el.getBoundingClientRect();
-        // Dois retângulos se interceptam se NÃO for verdade que um está completamente fora do outro
-        const overlaps = !(r.right < clickedRect.left || 
-                           r.left  > clickedRect.right || 
-                           r.bottom < clickedRect.top  || 
-                           r.top   > clickedRect.bottom);
-        if(overlaps) {
+        // Verifica se as coordenadas físicas do clique (x, y) estão contidas no retângulo do widget
+        const containsPoint = (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom);
+        if(containsPoint) {
           const wid = el.id.replace('W-', '');
-          const found = ST.cfg.paginas[pgIdx].widgets.find(cw => cw.id === wid);
+          const found = ST.cfg.orientations[ST.orientation][pgIdx].widgets.find(cw => cw.id == wid);
           if(found) hits.push(found);
         }
       });
     }
+
+    // Ordenação visual inteligente: o widget fisicamente por cima (menor tamanho = maior zIndex) fica no topo da lista
+    const getZIndex = w => w.tipo === 'imagem_pura' ? -100 : (1000 - (w.tamanho || 200));
+    hits.sort((a, b) => getZIndex(b) - getZIndex(a));
     
     if(hits.length >= 2) {
-      // 2 ou mais widgets se sobrepondo: abre o Layer Picker
       e.stopPropagation();
       openLayerPicker(hits, x, y, pgIdx);
+    } else if(hits.length === 1) {
+      selWidget(hits[0].id, pgIdx);
     } else {
-      // Widget sem sobreposição: seleciona normalmente
       selWidget(w.id, pgIdx);
     }
   };
@@ -177,19 +211,17 @@ function openLayerPicker(widgets, x, y, pgIdx) {
   picker.style.top = py + 'px';
   picker.classList.add('open');
 
-  // Fecha se clicar fora
-  setTimeout(() => document.addEventListener('touchstart', closePickerOutside, {once: true}), 100);
-  setTimeout(() => document.addEventListener('mousedown', closePickerOutside, {once: true}), 100);
+  // Fecha se clicar fora — usa {once:true} sem re-registro infinito
+  setTimeout(() => {
+    document.addEventListener('touchstart', closePickerOutside, {once: true, capture: true});
+    document.addEventListener('mousedown',  closePickerOutside, {once: true, capture: true});
+  }, 50);
 }
 
 function closePickerOutside(e) {
   const picker = document.getElementById('layer-picker');
+  // Se clicar fora: fecha. Se clicar dentro: o {once:true} já removeu o listener — não re-registra.
   if(picker && !picker.contains(e.target)) closeLayerPicker();
-  else {
-    // Re-attach if click was inside
-    setTimeout(() => document.addEventListener('touchstart', closePickerOutside, {once: true}), 100);
-    setTimeout(() => document.addEventListener('mousedown', closePickerOutside, {once: true}), 100);
-  }
 }
 
 function closeLayerPicker() {
@@ -200,7 +232,7 @@ function closeLayerPicker() {
 function joinGroup(widgetIds, pgIdx) {
   closeLayerPicker();
   const grupoId = Date.now();
-  ST.cfg.paginas[pgIdx].widgets.forEach(w => {
+  ST.cfg.orientations[ST.orientation][pgIdx].widgets.forEach(w => {
     if(widgetIds.includes(w.id)) w.grupo = grupoId;
   });
   saveToESP();
@@ -208,7 +240,7 @@ function joinGroup(widgetIds, pgIdx) {
 }
 
 function separarWidget(wid, pgIdx) {
-  const w = ST.cfg.paginas[pgIdx].widgets.find(x => x.id === wid);
+  const w = ST.cfg.orientations[ST.orientation][pgIdx].widgets.find(x => x.id == wid);
   if(!w) return;
   w.grupo = 0;
   rmWidget(w.id); mkWidget(w, pgIdx); 
@@ -219,23 +251,28 @@ function separarWidget(wid, pgIdx) {
 
 
 function openBgMenu(){ 
-  const pg=ST.cfg.paginas[ST.pg];
+  const pg=ST.cfg.orientations[ST.orientation][ST.pg];
   let optStr = '<option value="">(Sem Fundo Preto)</option>';
   if (ST.imgList && ST.imgList.length > 0) {
     ST.imgList.forEach(img => {
-      optStr += `<option value="${img}" ${pg.bg.img===img?'selected':''}>➔ ${img}</option>`;
+      let isCustom = img.startsWith('data:image');
+      let lbl = isCustom ? "Customizada Salva" : img;
+      optStr += `<option value="${img}" ${pg.bg.img===img?'selected':''}>➔ ${lbl}</option>`;
     });
   }
   const selBg = document.getElementById('bg-url');
   if(selBg) selBg.innerHTML = optStr;
   
+  const btn = document.getElementById('btn-del-bg');
+  if(btn) btn.style.display = pg.bg.img && pg.bg.img.startsWith('data:image') ? 'block' : 'none';
+
   document.getElementById('bg-size').value=pg.bg.size;
   document.getElementById('bgmenu').classList.add('open'); 
 }
 function closeBgMenu(){ document.getElementById('bgmenu').classList.remove('open'); }
 
 function applyBg(){ 
-  const pg=ST.cfg.paginas[ST.pg]; pg.bg.img=document.getElementById('bg-url').value; pg.bg.size=document.getElementById('bg-size').value; 
+  const pg=ST.cfg.orientations[ST.orientation][ST.pg]; pg.bg.img=document.getElementById('bg-url').value; pg.bg.size=document.getElementById('bg-size').value; 
   applyPageBg(ST.pg); saveToESP();
 }
 
@@ -247,7 +284,7 @@ function selWidget(wid,pi){
   const el = document.getElementById(`W-${wid}`);
   if(el) { el.classList.add('sel'); if(ST.moving) el.classList.add('moving'); }
   
-  const w=ST.cfg.paginas[pi].widgets.find(x=>x.id===wid);
+  const w=ST.cfg.orientations[ST.orientation][pi].widgets.find(x=>x.id==wid);
   if(w) {
     if(w.x > 50) document.getElementById('cpanel').classList.remove('right');
     else document.getElementById('cpanel').classList.add('right');
@@ -263,6 +300,7 @@ const FIELD_MAP = {
   'c-sensor':  (w, v) => w.sensor = v,
   'c-sensor-r':(w, v) => w.sensor = v,
   'c-cor':     (w, v) => w.cor = v,
+  'c-cor-barra':(w, v) => w.cor = v,
   'c-cor2':    (w, v) => w.cor2 = v,
   'c-cor2-lim':(w, v) => w.cor2Lim = parseInt(v),
   'c-cor3':    (w, v) => w.cor3 = v,
@@ -304,7 +342,9 @@ const FIELD_MAP = {
   'c-luz-sym': (w, v) => w.luzSym = v,
   'c-luz-trig':(w, v) => w.luzTrig = parseInt(v) || 0,
   'c-luz-inv': (w, v) => w.luzInvert = parseInt(v),
-  'c-smooth-k':(w, v) => w.smoothK = parseInt(v)
+  'c-smooth-k':(w, v) => w.smoothK = parseInt(v),
+  'c-tank-cap':(w, v) => w.tankCap = parseInt(v) || 44,
+  'c-demo-speed':(w, v) => w.demoSpeed = parseInt(v)
 };
 
 function toggleMoveMode(){
@@ -313,7 +353,7 @@ function toggleMoveMode(){
   closeLayerPicker();
   if(!ST.moving){
     panel.classList.add('open'); 
-    lockBtn.classList.remove('active'); 
+    lockBtn.classList.add('active'); // Mantém o botão de Mover visível na tela
     lockBtn.innerHTML = '<b>🔓</b><span>MOVER</span>';
     document.querySelectorAll('.widget').forEach(el=>el.classList.remove('moving')); 
     toast('TRAVADO'); 
@@ -356,7 +396,7 @@ function buildSensorSelect(currentVal, id) {
 }
 
 function openPanel(wid,pi){
-  const w=ST.cfg.paginas[pi].widgets.find(x=>x.id===wid); if(!w)return;
+  const w=ST.cfg.orientations[ST.orientation][pi].widgets.find(x=>x.id==wid); if(!w)return;
   
   const lockBtn = document.getElementById('mv-lock-btn');
   lockBtn.classList.add('active');
@@ -405,24 +445,29 @@ function openPanel(wid,pi){
     let optStr = '<option value="">(Nenhuma Selecionada)</option>';
     let customImgOption = '';
     
-    // Se a imagem atual for um Base64 personalizado (não está na lista oficial)
-    if (w.url && w.url.startsWith('data:image')) {
-      customImgOption = `<option value="${w.url}" selected>➔ Imagem da Galeria</option>`;
+    // Se a imagem atual for um Base64 personalizado que ainda não entrou na lista oficial (fallback)
+    if (w.url && w.url.startsWith('data:image') && (!ST.imgList || !ST.imgList.includes(w.url))) {
+      customImgOption = `<option value="${w.url}" selected>➔ Customizada Legado</option>`;
     }
     
     if (ST.imgList && ST.imgList.length > 0) {
       ST.imgList.forEach(img => {
-        optStr += `<option value="${img}" ${w.url===img?'selected':''}>➔ ${img}</option>`;
+        let isCustom = img.startsWith('data:image');
+        let lbl = isCustom ? "Customizada Salva" : img;
+        optStr += `<option value="${img}" ${w.url===img?'selected':''}>➔ ${lbl}</option>`;
       });
     }
 
     h += `<div class="csec">AJUSTES DA IMAGEM LIVRE</div>
       <div class="fg">
         <label class="fl">Escolha o Relógio / Imagem</label>
-        <select class="fsel" id="c-img-url">
-          ${customImgOption}
-          ${optStr}
-        </select>
+        <div style="display:flex; gap: 5px;">
+          <select class="fsel" id="c-img-url" style="flex:1;">
+            ${customImgOption}
+            ${optStr}
+          </select>
+          <button class="pbtn" id="btn-del-img" style="background:#e74c3c; padding: 0 10px; display:${w.url && w.url.startsWith('data:image') ? 'block' : 'none'};" title="Apagar da Galeria">🗑️</button>
+        </div>
       </div>
       <div class="fg">
         <label class="fl" style="color: var(--cyan);">OU Imagem do Celular / PC</label>
@@ -467,8 +512,17 @@ function openPanel(wid,pi){
     `;
   } else {
     h += `<div class="csec">ESTILO E SENSOR</div>
-      <div class="fg" style="display:${(T==='agulha_pura'?'block':'none')}"><label class="fl">Modelo Agulha</label><select class="fsel" id="c-tagulha"><option value="0" ${w.tagulha==0?'selected':''}>🔆 Neon Glow</option><option value="1" ${w.tagulha==1?'selected':''}>📍 Traço Fino</option><option value="2" ${w.tagulha==2?'selected':''}>🔺 Triângulo</option><option value="3" ${w.tagulha==3?'selected':''}>🔪 Ponta Cor</option></select></div>
-      <div class="fg" style="display:${(T==='agulha_pura'?'block':'none')}"><label class="fl">Suavização Agulha: <span class="fv" id="vks">${w.smoothK??100}</span>%</label><input type="range" class="frange" id="c-smooth-k" min="1" max="100" value="${w.smoothK??100}"></div>
+      <div class="fg" style="display:${(T==='agulha_pura'?'block':'none')}"><label class="fl">Modelo Agulha</label><select class="fsel" id="c-tagulha"><option value="0" ${w.tagulha==0?'selected':''}>⭐ Neon Glow</option><option value="1" ${w.tagulha==1?'selected':''}>📍 Traço Fino</option><option value="2" ${w.tagulha==2?'selected':''}>🔺 Triângulo</option><option value="3" ${w.tagulha==3?'selected':''}>🖍️ Ponta Cor</option></select></div>
+      <div class="fg" style="display:${(T==='agulha_pura'?'block':'none')}">
+        <label class="fl">Suavização Agulha</label>
+        <select class="fsel" id="c-smooth-k">
+          <option value="100" ${(w.smoothK??100)===100?'selected':''}>⚡ Sem Inércia (Padrão Global)</option>
+          <option value="9" ${(w.smoothK)===9?'selected':''}>🌬️ Suavização Leve (9%)</option>
+          <option value="6" ${(w.smoothK)===6?'selected':''}>🌊 Suavização Média (6%)</option>
+          <option value="3" ${(w.smoothK)===3?'selected':''}>🛡️ Suavização Alta (3%)</option>
+        </select>
+      </div>
+      <div class="fg" style="display:${(w.sensor==6?'block':'none')}"><label class="fl">Capacidade do Tanque (L)</label><input type="number" class="finp" id="c-tank-cap" value="${w.tankCap??44}" step="1" min="10" max="150"></div>
       <div class="fg" style="display:${(T==='numero_puro'?'block':'none')}"><label class="fl">Estilo Fonte</label><select class="fsel" id="c-font"><option value="Orbitron" ${w.fontFamily==='Orbitron'?'selected':''}>Orbitron</option><option value="Oxanium" ${w.fontFamily==='Oxanium'?'selected':''}>Oxanium</option><option value="Michroma" ${w.fontFamily==='Michroma'?'selected':''}>Michroma</option><option value="Teko" ${w.fontFamily==='Teko'?'selected':''}>Teko</option></select></div>
       <div class="fg" style="display:${(T==='arco_puro'?'block':'none')}"><label class="fl">Estilo das Pontas</label><select class="fsel" id="c-linecap"><option value="butt" ${w.lineCap==='butt'?'selected':''}>Reto</option><option value="round" ${w.lineCap==='round'?'selected':''}>Arredondado</option></select></div>
       <div class="fg"><label class="fl">Sensor</label>
@@ -488,9 +542,12 @@ function openPanel(wid,pi){
           <div class="fg"><label class="fl">Exibição Combustível</label>
             <select class="fsel" id="c-unit-mode">
               <option value="%" ${w.unitMode==='%'?'selected':''}>PORCENTAGEM (%)</option>
-              <option value="L" ${w.unitMode==='L'?'selected':''}>LITROS (Base 44L)</option>
+              <option value="L" ${w.unitMode==='L'?'selected':''}>LITROS (Tanque)</option>
             </select>
           </div>
+        ` : ''}
+        ${w.sensor === 'demo' ? `
+          <div class="fg"><label class="fl">Velocidade Demo: <span class="fv" id="vds">${w.demoSpeed || 50}</span>%</label><input type="range" class="frange" id="c-demo-speed" min="10" max="100" value="${w.demoSpeed || 50}"></div>
         ` : ''}
       </div>
       <div class="fg" style="display:${T!=='barra_pura'?'block':'none'}"><label class="fl">Cor</label><input type="color" class="fcol" id="c-cor" value="${w.cor}"></div>
@@ -503,7 +560,7 @@ function openPanel(wid,pi){
           </div>
           <div style="flex:1;text-align:center">
             <div style="font-size:9px;color:#aaa;margin-bottom:4px">PRINCIPAL</div>
-            <input type="color" class="fcol" id="c-cor" value="${w.cor}" style="width:100%">
+            <input type="color" class="fcol" id="c-cor-barra" value="${w.cor}" style="width:100%">
           </div>
           <div style="flex:1;text-align:center">
             <div style="font-size:9px;color:#aaa;margin-bottom:4px">PONTA 2</div>
@@ -521,8 +578,8 @@ function openPanel(wid,pi){
       <div class="fg" style="display:${(T==='barra_pura'?'block':'none')}"><label class="fl">Espaçamento: <span class="fv" id="vspc">${w.spacing??2}</span>px</label><input type="range" class="frange" id="c-spacing" min="0" max="20" value="${w.spacing??2}"></div>
       <div class="fg" style="display:${(T==='barra_pura'?'block':'none')}"><label class="fl">Orientação</label><select class="fsel" id="c-direction"><option value="h" ${w.direction==='h'?'selected':''}>Horizontal</option><option value="v" ${w.direction==='v'?'selected':''}>Vertical</option></select></div>
       <div class="fg-row" style="display:${(T==='agulha_pura'||T==='barra_pura'||T==='arco_puro')?'flex':'none'};gap:10px"><div style="flex:1"><label class="fl">Mínimo</label><input type="number" class="finp" id="c-min" value="${w.minValor??0}"></div><div style="flex:1"><label class="fl">Máximo</label><input type="number" class="finp" id="c-max" value="${w.maxValor??100}"></div></div>
-      <div class="fg" style="display:${(T==='arco_puro'||T==='agulha_pura'?'block':'none')}"><label class="fl">Ângulo Início: <span class="fv" id="vai">${w.angIni||135}</span>°</label><input type="range" class="frange" id="c-ai" min="0" max="360" value="${w.angIni||135}"></div>
-      <div class="fg" style="display:${(T==='arco_puro'||T==='agulha_pura'?'block':'none')}"><label class="fl">Ângulo Total: <span class="fv" id="vsw">${w.angSweep||270}</span>°</label><input type="range" class="frange" id="c-sw" min="1" max="360" value="${w.angSweep||270}"></div>
+      <div class="fg" style="display:${(T==='arco_puro'||T==='agulha_pura'?'block':'none')}"><label class="fl">Ângulo Início: <span class="fv" id="vai" style="color: #00ff88 !important; text-shadow: 0 0 8px rgba(0, 255, 136, 0.4);">${w.angIni||135}</span>°</label><input type="range" class="frange" id="c-ai" min="0" max="360" value="${w.angIni||135}"></div>
+      <div class="fg" style="display:${(T==='arco_puro'||T==='agulha_pura'?'block':'none')}"><label class="fl">Ângulo Total: <span class="fv" id="vsw" style="color: #ff3355 !important; text-shadow: 0 0 8px rgba(255, 51, 85, 0.4);">${w.angSweep||270}</span>°</label><input type="range" class="frange" id="c-sw" min="1" max="360" value="${w.angSweep||270}"></div>
       <div class="fg" style="display:${(T==='numero_puro'?'block':'none')}"><label class="fl">Unidade</label><input type="text" class="finp" id="c-unit" value="${w.unidade||''}"></div>
     `;
   }
@@ -530,9 +587,39 @@ function openPanel(wid,pi){
   document.getElementById('cpanel').classList.add('open');
 }
 
+function updateExtraSensorCfg(w) {
+  const container = document.getElementById('extra-sensor-cfg');
+  if (!container) return;
+  
+  let h = '';
+  if (w.sensor === 'speed') {
+    h = `
+      <div class="fg"><label class="fl">Correção Velocímetro</label>
+        <select class="fsel" id="c-corr">
+          <option value="0" ${!w.corr?'selected':''}>REAL (GPS/ECU)</option>
+          <option value="1" ${w.corr?'selected':''}>CORRIGIDA (+5%)</option>
+        </select>
+      </div>`;
+  } else if (w.sensor === 'fuelLevel') {
+    h = `
+      <div class="fg"><label class="fl">Exibição Combustível</label>
+        <select class="fsel" id="c-unit-mode">
+          <option value="%" ${w.unitMode==='%'?'selected':''}>PORCENTAGEM (%)</option>
+          <option value="L" ${w.unitMode==='L'?'selected':''}>LITROS (Tanque)</option>
+        </select>
+      </div>`;
+  } else if (w.sensor === 'demo') {
+    h = `
+      <div class="fg"><label class="fl">Velocidade Demo: <span class="fv" id="vds">${w.demoSpeed || 50}</span>%</label><input type="range" class="frange" id="c-demo-speed" min="10" max="100" value="${w.demoSpeed || 50}"></div>
+    `;
+  }
+  container.innerHTML = h;
+}
+
 function applyConfig(changedId){
-  if(!ST.sel) return; const w=ST.cfg.paginas[ST.pg].widgets.find(x=>x.id===ST.sel); if(!w)return;
+  if(!ST.sel) return; const w=ST.cfg.orientations[ST.orientation][ST.pg].widgets.find(x=>x.id==ST.sel); if(!w)return;
   const f = id => document.getElementById(id);
+  const oldSensor = w.sensor;
   
   if (changedId) {
     const fn = FIELD_MAP[changedId];
@@ -543,8 +630,18 @@ function applyConfig(changedId){
   } else {
     Object.entries(FIELD_MAP).forEach(([id, fn]) => {
       const el = f(id);
-      if(el) fn(w, el.value);
+      if (el) {
+        const fg = el.closest('.fg') || el.closest('.fg-row');
+        if (fg && fg.style.display === 'none') return;
+        fn(w, el.value);
+      }
     });
+  }
+
+  if (w.sensor !== oldSensor) {
+    delete w._lastDrawS;
+    delete w._sv;
+    updateExtraSensorCfg(w); // Atualiza os campos extras do sensor instantaneamente na tela!
   }
 
   // Lista de IDs de campos que exigem redimensionamento físico do canvas ou recriação DOM
@@ -575,15 +672,18 @@ function applyConfig(changedId){
   }
 }
 
-function delWidget(){ 
-  if(confirm('Excluir?')){ 
-    const idx=ST.cfg.paginas[ST.pg].widgets.findIndex(x=>x.id===ST.sel); 
-    if(idx>=0){ ST.cfg.paginas[ST.pg].widgets.splice(idx,1); rmWidget(ST.sel);} 
-    ST.sel=null; ST.moving=false; 
-    document.getElementById('cpanel').classList.remove('open'); 
-    document.getElementById('mv-lock-btn').classList.remove('active'); 
-    saveToESP(); 
+function delWidget(){
+  // confirm() bloqueia o thread JS no Android WebView — substituído por toast + delete direto
+  const idx = ST.cfg.orientations[ST.orientation][ST.pg].widgets.findIndex(x => x.id == ST.sel);
+  if (idx >= 0) {
+    ST.cfg.orientations[ST.orientation][ST.pg].widgets.splice(idx, 1);
+    rmWidget(ST.sel);
   }
+  ST.sel = null; ST.moving = false;
+  document.getElementById('cpanel').classList.remove('open');
+  document.getElementById('mv-lock-btn').classList.remove('active');
+  saveToESP();
+  toast('🗑️ WIDGET REMOVIDO');
 }
 
 function openAddMenu(){
@@ -596,9 +696,9 @@ function openAddMenu(){
         if(t.id==='regua_pura') { Object.assign(nw, { rMin:0, rMax:100, rCurv:0, rStart:0, rStyle:0, rFont:'Orbitron', rFontSz:12, rTickLen:15, rDens:5, rThick:2, rDir:'h' }); }
         if(t.id==='numero_puro') nw.maxValor=8000;
         if(t.id==='barra_pura') nw.maxValor=100; // Barras: sensores comuns são 0-100%
-        if(t.id==='imagem_pura') { nw.url='/flames.webp'; nw.tamanho=300; }
+        if(t.id==='imagem_pura') { nw.url='/flames.webp'; nw.tamanho=100; }
         if(t.id==='luz_espia') { Object.assign(nw, {luzSym:'alerta', luzTrig:80, luzInvert:0, cor:'#ff0000', cor2:'#333333', tamanho:60, sensor:'demo'}); }
-        ST.cfg.paginas[ST.pg].widgets.push(nw); mkWidget(nw,ST.pg); closeAddMenu(); selWidget(id, ST.pg); 
+        ST.cfg.orientations[ST.orientation][ST.pg].widgets.push(nw); mkWidget(nw,ST.pg); closeAddMenu(); selWidget(id, ST.pg); 
     }; grid.appendChild(d);
   });document.getElementById('addmenu').classList.add('open');
 }

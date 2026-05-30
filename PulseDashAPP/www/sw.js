@@ -1,12 +1,16 @@
-const CACHE_NAME = 'pulsedash-v4.1';
+const CACHE_NAME = 'pulsedash-v6.5';
 const ASSETS = [
   '/',
   '/index.html',
   '/style.css',
   '/js/state.js',
+  '/js/utils.js',
   '/js/renderers.js',
   '/js/editor.js',
   '/js/main.js',
+  '/js/trip.js',
+  '/js/perf.js',
+  '/js/transport.js',
   '/manifest.json'
 ];
 

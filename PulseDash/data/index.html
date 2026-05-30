@@ -215,66 +215,129 @@
   <div id="trip-overlay">
     <div class="trip-card-wrapper">
       <div class="trip-card">
-        <div class="trip-title">COMPUTADOR DE BORDO</div>
+        <div class="trip-title" id="trip-main-title">COMPUTADOR DE BORDO</div>
         
-        <!-- Grid de Estatísticas em tempo real -->
-        <div class="trip-stats-grid">
-          <div class="trip-stat-card">
-            <span class="trip-stat-label">📏 DISTÂNCIA</span>
-            <span class="trip-stat-val" id="trip-val-dist">0.00</span>
-            <span class="trip-stat-unit">KM</span>
+        <!-- Abas de Navegação -->
+        <div class="trip-tabs">
+          <div class="trip-tab active" id="tab-trip-diario">DIÁRIO</div>
+          <div class="trip-tab" id="tab-trip-a">TRIP A</div>
+        </div>
+
+        <!-- CONTEÚDO DIÁRIO -->
+        <div id="trip-content-diario" class="trip-tab-content active">
+          <div class="trip-stats-grid">
+            <div class="trip-stat-card">
+              <span class="trip-stat-label">📏 DISTÂNCIA</span>
+              <span class="trip-stat-val" id="trip-val-dist">0.00</span>
+              <span class="trip-stat-unit">KM</span>
+            </div>
+            <div class="trip-stat-card">
+              <span class="trip-stat-label">⛽ COMB. GASTO</span>
+              <span class="trip-stat-val" id="trip-val-fuel">0.00</span>
+              <span class="trip-stat-unit">LITROS</span>
+              <span id="trip-val-fuel-type" style="font-family: 'Orbitron'; font-size: 8px; color: var(--roxo-c); font-weight: bold; margin-top: 5px; display: block; letter-spacing: 1px; text-transform: uppercase;">--</span>
+            </div>
+            <div class="trip-stat-card">
+              <span class="trip-stat-label">🌽 TEOR ETANOL</span>
+              <span class="trip-stat-val" id="trip-val-eth">--</span>
+              <span class="trip-stat-unit">%</span>
+            </div>
+            <div class="trip-stat-card">
+              <span class="trip-stat-label">⏱️ VELOCIDADE MÉD.</span>
+              <span class="trip-stat-val" id="trip-val-avgspeed">0.0</span>
+              <span class="trip-stat-unit">KM/H</span>
+            </div>
+            <div class="trip-stat-card">
+              <span class="trip-stat-label">📊 CONSUMO MÉD.</span>
+              <span class="trip-stat-val" id="trip-val-avgcons">0.00</span>
+              <span class="trip-stat-unit">KM/L</span>
+            </div>
+            <div class="trip-stat-card">
+              <span class="trip-stat-label">💸 CUSTO VIAGEM</span>
+              <span style="display: flex; align-items: center; justify-content: center; gap: 8px; position: relative;">
+                <span class="trip-stat-val" id="trip-val-cost">0.00</span>
+                <span id="btn-trip-edit-price" style="cursor: pointer; font-size: 14px; opacity: 0.6; transition: opacity 0.2s;" title="Configurar Preço">✏️</span>
+              </span>
+              <span class="trip-stat-unit">R$</span>
+            </div>
           </div>
-          <div class="trip-stat-card">
-            <span class="trip-stat-label">⛽ COMB. GASTO</span>
-            <span class="trip-stat-val" id="trip-val-fuel">0.00</span>
-            <span class="trip-stat-unit">LITROS</span>
-            <span id="trip-val-fuel-type" style="font-family: 'Orbitron'; font-size: 8px; color: var(--roxo-c); font-weight: bold; margin-top: 5px; display: block; letter-spacing: 1px; text-transform: uppercase;">--</span>
+
+          <div class="trip-timers">
+            <div class="trip-timer-item">
+              <span>TOTAL</span>
+              <b id="trip-timer-total">00:00:00</b>
+            </div>
+            <div class="trip-timer-item">
+              <span>MOVIMENTO</span>
+              <b id="trip-timer-driving">00:00:00</b>
+            </div>
+            <div class="trip-timer-item">
+              <span>PARADO</span>
+              <b id="trip-timer-stopped">00:00:00</b>
+            </div>
           </div>
-          <div class="trip-stat-card">
-            <span class="trip-stat-label">🌽 TEOR ETANOL</span>
-            <span class="trip-stat-val" id="trip-val-eth">--</span>
-            <span class="trip-stat-unit">%</span>
-          </div>
-          <div class="trip-stat-card">
-            <span class="trip-stat-label">⏱️ VELOCIDADE MÉD.</span>
-            <span class="trip-stat-val" id="trip-val-avgspeed">0.0</span>
-            <span class="trip-stat-unit">KM/H</span>
-          </div>
-          <div class="trip-stat-card">
-            <span class="trip-stat-label">📊 CONSUMO MÉD.</span>
-            <span class="trip-stat-val" id="trip-val-avgcons">0.00</span>
-            <span class="trip-stat-unit">KM/L</span>
-          </div>
-          <div class="trip-stat-card">
-            <span class="trip-stat-label">💸 CUSTO VIAGEM</span>
-            <span style="display: flex; align-items: center; justify-content: center; gap: 8px; position: relative;">
-              <span class="trip-stat-val" id="trip-val-cost">0.00</span>
-              <span id="btn-trip-edit-price" style="cursor: pointer; font-size: 14px; opacity: 0.6; transition: opacity 0.2s;" title="Configurar Preço">✏️</span>
-            </span>
-            <span class="trip-stat-unit">R$</span>
+
+          <div class="trip-footer" style="margin-top: 20px; display: flex; gap: 10px;">
+            <button class="trip-btn-ui" id="btn-trip-history" style="background: rgba(0,242,255,0.1); color: var(--cyan); border-color: var(--cyan); flex: 1;">VER HISTÓRICO</button>
+            <button class="trip-btn-ui close" id="btn-trip-close" style="flex: 1;">VOLTAR</button>
           </div>
         </div>
 
-        <!-- Timers da Viagem -->
-        <div class="trip-timers">
-          <div class="trip-timer-item">
-            <span>TOTAL</span>
-            <b id="trip-timer-total">00:00:00</b>
+        <!-- CONTEÚDO TRIP A -->
+        <div id="trip-content-a" class="trip-tab-content">
+          <div class="trip-stats-grid">
+            <div class="trip-stat-card">
+              <span class="trip-stat-label">📏 DISTÂNCIA A</span>
+              <span class="trip-stat-val" id="trip-a-val-dist">0.00</span>
+              <span class="trip-stat-unit">KM</span>
+            </div>
+            <div class="trip-stat-card">
+              <span class="trip-stat-label">⛽ COMB. GASTO A</span>
+              <span class="trip-stat-val" id="trip-a-val-fuel">0.00</span>
+              <span class="trip-stat-unit">LITROS</span>
+              <span id="trip-a-val-fuel-type" style="font-family: 'Orbitron'; font-size: 8px; color: var(--roxo-c); font-weight: bold; margin-top: 5px; display: block; letter-spacing: 1px; text-transform: uppercase;">--</span>
+            </div>
+            <div class="trip-stat-card">
+              <span class="trip-stat-label">🌽 TEOR ETANOL</span>
+              <span class="trip-stat-val" id="trip-a-val-eth">--</span>
+              <span class="trip-stat-unit">%</span>
+            </div>
+            <div class="trip-stat-card">
+              <span class="trip-stat-label">⏱️ VELOCIDADE MÉD. A</span>
+              <span class="trip-stat-val" id="trip-a-val-avgspeed">0.0</span>
+              <span class="trip-stat-unit">KM/H</span>
+            </div>
+            <div class="trip-stat-card">
+              <span class="trip-stat-label">📊 CONSUMO MÉD. A</span>
+              <span class="trip-stat-val" id="trip-a-val-avgcons">0.00</span>
+              <span class="trip-stat-unit">KM/L</span>
+            </div>
+            <div class="trip-stat-card">
+              <span class="trip-stat-label">💸 CUSTO TRIP A</span>
+              <span class="trip-stat-val" id="trip-a-val-cost">0.00</span>
+              <span class="trip-stat-unit">R$</span>
+            </div>
           </div>
-          <div class="trip-timer-item">
-            <span>MOVIMENTO</span>
-            <b id="trip-timer-driving">00:00:00</b>
-          </div>
-          <div class="trip-timer-item">
-            <span>PARADO</span>
-            <b id="trip-timer-stopped">00:00:00</b>
-          </div>
-        </div>
 
-        <!-- Botões de Ação -->
-        <div class="trip-footer" style="margin-top: 20px;">
-          <button class="trip-btn-ui reset" id="btn-trip-reset">ZERAR VIAGEM</button>
-          <button class="trip-btn-ui close" id="btn-trip-close">VOLTAR</button>
+          <div class="trip-timers">
+            <div class="trip-timer-item">
+              <span>TOTAL A</span>
+              <b id="trip-a-timer-total">00:00:00</b>
+            </div>
+            <div class="trip-timer-item">
+              <span>MOVIMENTO A</span>
+              <b id="trip-a-timer-driving">00:00:00</b>
+            </div>
+            <div class="trip-timer-item">
+              <span>PARADO A</span>
+              <b id="trip-a-timer-stopped">00:00:00</b>
+            </div>
+          </div>
+
+          <div class="trip-footer" style="margin-top: 20px; display: flex; gap: 10px;">
+            <button class="trip-btn-ui reset" id="btn-trip-a-reset" style="flex: 1;">ZERAR TRIP A</button>
+            <button class="trip-btn-ui close" id="btn-trip-close-a" style="flex: 1;">VOLTAR</button>
+          </div>
         </div>
       </div>
 
@@ -299,6 +362,19 @@
         <div style="display: flex; gap: 12px; width: 100%;">
           <button class="trip-btn-ui close" id="btn-trip-popup-close" style="padding: 10px 0; font-size: 9px; flex: 1;">VOLTAR</button>
           <button class="trip-btn-ui" id="btn-trip-popup-save" style="padding: 10px 0; font-size: 9px; flex: 1; border-color: var(--roxo-c); background: rgba(189,0,255,0.05); color: var(--roxo-c);">CONFIRMAR</button>
+        </div>
+      </div>
+
+      <!-- POPUP DO HISTÓRICO DE VIAGENS -->
+      <div id="trip-hist-popup" class="trip-card" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(10, 10, 10, 0.98); border-radius: 12px; z-index: 10006; flex-direction: column; padding: 25px 20px; box-sizing: border-box; box-shadow: 0 0 30px rgba(0, 242, 255, 0.35);">
+        <div style="font-family: 'Orbitron'; font-size: 11px; color: var(--cyan); letter-spacing: 2px; text-transform: uppercase; font-weight: bold; margin-bottom: 20px; text-align: center;">📊 Histórico de Viagens</div>
+        
+        <div id="trip-hist-list" style="width: 100%; flex: 1; overflow-y: auto; padding-right: 5px;">
+          <!-- Lista preenchida dinamicamente -->
+        </div>
+        
+        <div style="width: 100%; margin-top: 15px;">
+          <button class="trip-btn-ui close" id="btn-trip-hist-close" style="width: 100%; padding: 12px 0;">VOLTAR</button>
         </div>
       </div>
     </div>
@@ -355,6 +431,7 @@
       <button class="tbbtn" id="btn-fs">⛶</button>
     </div>
     <div class="tbbtns">
+
       <button class="tbbtn" id="btn-bg">🖼 FUNDO</button>
       <button class="tbbtn" id="btn-add">+ WIDGET</button>
       <button class="tbbtn" style="color:#f55" id="btn-exit">SAIR</button>

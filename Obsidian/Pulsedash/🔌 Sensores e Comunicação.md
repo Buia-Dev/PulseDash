@@ -49,10 +49,10 @@
 
 > \* MAP (`0x0B`) e Consumo (`0x5E`): quando a ECU não responde, o app usa **fallback virtual** calculado via throttle + load + RPM. Recalcula a cada ciclo, nunca congela.
 
-### ❌ Sensores Removidos (Não Suportados via OBD Modo 01)
-- `Temp. Óleo` (`oilTemp`) — requer PID proprietário GM Service 22
-- `Pressão Óleo` (`oilPres`) — idem
-- `Temp. Câmbio` (`transTemp`) — idem
+### ❌ Sensores Removidos (Tentativa UDS Falhou)
+- `Temp. Óleo` (`oilTemp`) — Tentativa via Service 22 (PID proprietário GM `0x1154`) falhou. O carro ignora a requisição ou exige Security Access.
+- `Pressão Óleo` (`oilPres`) — Falhou via Service 22 (`0x115C`).
+- `Temp. Câmbio` (`transTemp`) — Falhou via Service 22 (`0x1940`).
 - `Potenciômetro` (test) — hardwired, não via OBD
 
 ---

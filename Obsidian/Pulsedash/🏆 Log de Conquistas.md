@@ -188,7 +188,37 @@ Esta sessão foi a mais importante e produtiva do projeto. Dividida em 3 fases d
    ↓
 [v6.2]  ★ SESSÃO ÉPICA: 3 fases — Arquitetura + Debug UI + Compilação CLI
          ★ PRIMEIRA SAÍDA DE RUA — Leitura confirmada no Onix 2026
-```
+   ↓
+[v6.3]  Remoção de shadowBlur (Thermal Throttling) e Lazy Render otimizado
+   ↓
+[v6.4]  Separação de utils.js (Fim da dependência circular e silent crashes no Boot)
+
+---
+
+## 🎖️ A Batalha contra o Android WebView (v6.3 / v6.4)
+
+**O que foi:** O app entrava em _thermal throttling_ após minutos de uso e congelava a tela no boot intermitentemente.
+- **Thermal Throttling:** Identificamos que o `ctx.shadowBlur` nos Canvas causava um overhead colossal sem aceleração nativa na GPU, derretendo o CPU do celular. A remoção resolveu os travamentos em tempo de uso. Adicionamos **Lazy Render**, onde o `ctx` só é limpo e redesenhado se a variação do sensor for maior que `0.05`.
+- **Silent Boot Crash:** Um erro silencioso e randômico no Android WebView estava ocorrendo devido a uma **Dependência Circular** (ES6 Modules) entre `main.js`, `trip.js` e `transport.js` que usavam o `toast()`. Extraímos tudo para um `utils.js` isolado e os travamentos do boot desapareceram completamente.
+
+---
+
+## 🎖️ Expansão de Performance e UI Premium (v6.5 / v6.6)
+
+**O que foi:** Foco absoluto na fluidez visual, usabilidade do editor e suporte a novos sensores de performance.
+
+**Fase de Editor e Usabilidade (v6.5):**
+- **Collision Test Exato (Z-Index):** O clique de seleção no editor passou a priorizar os elementos menores e mais à frente (Point-in-Rectangle hit test com ordenação decrescente de área), facilitando selecionar elementos pequenos sobrepostos a grandes áreas.
+- **Scroll e Pinned Buttons no Painel:** O `#cpanel` foi redesenhado com barra de rolagem high-tech interna. Botões de "SALVAR/DELETAR" e o título ficaram fixos (pinned) para sempre estarem visíveis, eliminando problemas de corte na parte inferior.
+- **Opções Automáticas por Sensor:** Ao selecionar um sensor (ex: Velocidade, Modo Demo), as opções específicas de correção abrem instantaneamente na edição do widget sem necessidade de reabrir o menu.
+- **Inércia Suavizada:** Slider substituído por um dropdown intuitivo (3%, 6%, 9% ou Sem Inércia).
+- **Correções Visuais:** O botão "Mover/Travar" parou de sumir, e a borda amarela de seleção foi fixada garantindo retenção de estados pelo `mkWidget()`. E widgets independentes ganharam a própria velocidade de Modo Demo (`w.demoSpeed`).
+
+**Fase de Performance Extrema e Otimização GPU (v6.6):**
+- **Novos Sensores PRO:** Implementados decodificadores para `turbo`, `maf`, `oilPress`, `fuelPress`, `oilTemp`, `iat`, `egt`, `afr`, `lambda` e `timing`. Os cálculos de mistura e pressão de turbo já usam decimais nos relógios. Removidos sensores GPS retro para focar 100% no OBD2.
+- **60FPS no Android WebView:** Diagnosticamos um grande gargalo na splash screen. O Android WebView congelava/lagava renderizando `-webkit-background-clip: text` junto de `filter: drop-shadow`. 
+- **Solução Visual Elegante:** Trocamos todos os drop-shadows por `text-shadow` e `box-shadow`, recuperando os 60FPS estáveis na abertura sem perder a estética neon/synthwave.
+- **Pausa Dramática (500ms):** Inserimos 500ms de tela preta pura antes da inicialização visual para evitar o engasgo inicial do aplicativo no celular e permitir que o usuário sempre aprecie a animação de "booting" do zero com sincronia perfeita.
 
 ---
 

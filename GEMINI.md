@@ -24,10 +24,10 @@ Este projeto é desenvolvido sob uma dinâmica de co-criação muito clara, base
 
 ### 🎨 Arquitetura do Frontend (Canvas 60fps)
 O painel é desenhado 100% via HTML5 Canvas a 60fps e está modularizado nos seguintes arquivos:
-1. **[state.js](file:///c:/Users/Buia/.gemini/antigravity/scratch/gol_g1_dashboard/PulseDashESP/data/js/state.js):** Gerenciamento de dados e reatividade dos sensores.
-2. **[renderers.js](file:///c:/Users/Buia/.gemini/antigravity/scratch/gol_g1_dashboard/PulseDashESP/data/js/renderers.js):** Desenho dos gauges, barras, gráficos e elementos do Canvas.
-3. **[editor.js](file:///c:/Users/Buia/.gemini/antigravity/scratch/gol_g1_dashboard/PulseDashESP/data/js/editor.js):** Configurações, posicionamento de elementos e menu de edição.
-4. **[main.js](file:///c:/Users/Buia/.gemini/antigravity/scratch/gol_g1_dashboard/PulseDashESP/data/js/main.js):** Loop principal de renderização, WebSocket de telemetria e inicialização.
+1. **[state.js](file:///c:/Users/Buia/.gemini/antigravity/scratch/PulseDash/PulseDash/data/js/state.js):** Gerenciamento de dados e reatividade dos sensores.
+2. **[renderers.js](file:///c:/Users/Buia/.gemini/antigravity/scratch/PulseDash/PulseDash/data/js/renderers.js):** Desenho dos gauges, barras, gráficos e elementos do Canvas.
+3. **[editor.js](file:///c:/Users/Buia/.gemini/antigravity/scratch/PulseDash/PulseDash/data/js/editor.js):** Configurações, posicionamento de elementos e menu de edição.
+4. **[main.js](file:///c:/Users/Buia/.gemini/antigravity/scratch/PulseDash/PulseDash/data/js/main.js):** Loop principal de renderização, WebSocket de telemetria e inicialização.
 
 ---
 
