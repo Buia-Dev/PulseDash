@@ -4,52 +4,46 @@
 
 ---
 
-## 📂 Estrutura Raiz do Repositório (Laboratório)
+## 📂 Estrutura Raiz do Repositório (Consolidado)
 
 ```
-PulseDash/
-├── PulseDashESP/              ← Assets web do dashboard (Laboratório)
-│   └── data/                  ← Copiado para o APK via sync.js
+PulseDash/                     ← Pasta raiz do repositório
+├── PulseDash/                 ← Pasta de código do Dashboard (Laboratório)
+│   └── data/                  ← Assets da aplicação web
 │       ├── index.html         ← Estrutura do dashboard + modais
-│       ├── style.css          ← Identidade visual (30fps, GPU compositing)
-│       ├── manifest.json      ← PWA config
+│       ├── style.css          ← Identidade visual (60fps, GPU compositing)
+│       ├── manifest.json      ← Configurações PWA
 │       ├── sw.js              ← Service Worker (cache offline)
-│       ├── icon-192.png       ← Ícone PWA
-│       ├── icon-512.png       ← Ícone PWA
+│       ├── needle_preview.html ← Preview e catálogo das 16 agulhas
+│       ├── bar_arc_preview.html ← Preview dos 10 novos estilos de arcos/barras
 │       └── js/
-│           ├── state.js       ← Estado global, SENSORS_CONFIG, CFG_DEF
-│           ├── renderers.js   ← Motor Canvas: arcos, barras, agulhas, luzes
-│           ├── editor.js      ← Editor drag-and-drop, FIELD_MAP
-│           ├── utils.js       ← Funções utilitárias puras (toast, conversores)
-│           ├── main.js        ← Loop rAF 30fps, OBD overlay, orientação
-│           ├── transport.js   ← Bluetooth Serial, saveToESP, loadFromESP
-│           ├── perf.js        ← Cronômetro 0-100, state machine, Top 5
-│           └── trip.js        ← Computador de bordo (dist, fuel, timers)
+│           ├── state.js       ← Definições de agulhas (NEEDLES_CONFIG) e sensores
+│           ├── renderers.js   ← Motor Canvas com auto-escala (sf) e rendering logic
+│           ├── editor.js      ← Seletor Figma-like com <optgroup>
+│           ├── utils.js       ← Funções utilitárias puras (toast, math)
+│           ├── main.js        ← Loop principal requestAnimationFrame
+│           ├── transport.js   ← Bluetooth Serial e WebSocket fallback
+│           ├── perf.js        ← Cronômetro de performance 0-100
+│           └── trip.js        ← Computador de bordo (timings, odômetro)
 │
-├── CAN_OBD2_Test/             ← Diagnóstico histórico (confirmou 29-bit)
-├── CAN_Sniffer/               ← Modo LISTEN_ONLY
-├── UART_Loopback_Test/        ← Teste de continuidade física
-└── Obsidian/                  ← Esta base de conhecimento
-    └── Pulsedash/
-```
-
----
-
-## 📂 Repositório Oficial (PulseDash v6.0)
-
-```
-PulseDash v6.4/                ← REPOSITÓRIO OFICIAL
-├── PulseDashESP_BT/
-│   └── PulseDashESP_BT.ino   ← Firmware ESP32 (CAN + Bluetooth RFCOMM)
 ├── PulseDashAPP/              ← Projeto Capacitor (Android)
-│   ├── www/                   ← Assets sincronizados do laboratório
+│   ├── www/                   ← Assets compilados e sincronizados
 │   ├── android/               ← Projeto Android Studio (Gradle)
-│   ├── sync.js                ← Script de sync + patches BT
-│   └── package.json
-└── app-debug.apk              ← APK mais recente (debug)
+│   ├── sync.js                ← Script de sync, injeção do capacitor.js
+│   └── package.json           ← Comandos de sync e build
+│
+├── PulseDashESP_BT/           ← Pasta de firmware do carro
+│   └── PulseDashESP_BT.ino    ← Firmware ESP32 (CAN 29-bit + Bluetooth SPP)
+│
+├── APK/                       ← Pasta de distribuição dos executáveis
+│   ├── PulseDashV6.9.apk      ← APK compilado da versão atual v6.9
+│   └── Firmware/              ← Firmware .bin compilado para gravação
+│
+├── Obsidian/                  ← Documentação Obsidian (esta base de conhecimento)
+│   └── Pulsedash/             ← Notas organizadas
 ```
 
-> **Regra de ouro:** `PulseDash` é o LABORATÓRIO. `PulseDash v6.4` é o REPOSITÓRIO OFICIAL. Sempre rodar `npm run android-sync` + `gradlew assembleDebug` ao finalizar sessão.
+> **Regra de ouro:** `PulseDash/PulseDash/data` é o laboratório de assets. O build deve ser sincronizado com o `PulseDashAPP` rodando `node sync.js` seguido por `npx.cmd cap sync android` na pasta `PulseDashAPP/`. O APK final é gerado por `.\gradlew.bat assembleDebug` e movido para `APK/`.
 
 ---
 

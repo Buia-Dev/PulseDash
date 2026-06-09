@@ -1,10 +1,17 @@
 'use strict';
-import { ST, SENSORS_CONFIG, LOCAL_IMAGES, TIPOS_INFO } from './state.js';
+import { ST, SENSORS_CONFIG, LOCAL_IMAGES, TIPOS_INFO, NEEDLES_CONFIG } from './state.js';
 import { toast, applyPageBg } from './utils.js';
 import { saveToESP } from './transport.js';
+import { getAllCustomImages, deleteCustomImage, renameCustomImage } from './db.js';
 
 function mkWidget(w,pgIdx){
+  // Auto-correção de layouts antigos ou corrompidos onde o tamanho sumiu
+  if (w.tamanho === undefined || w.tamanho === null || isNaN(w.tamanho)) w.tamanho = 200;
+  if (w.x === undefined || isNaN(w.x)) w.x = 50;
+  if (w.y === undefined || isNaN(w.y)) w.y = 50;
+
   w.pg = pgIdx;
+  delete w._lastDrawS; // Força re-renderização ao recriar o canvas
   const layer=document.getElementById(`wl-${pgIdx}`); if(!layer) return;
   const div=document.createElement('div');
   div.id=`W-${w.id}`;
@@ -78,8 +85,7 @@ function mkWidget(w,pgIdx){
     // --- MODO MOVER: arrasta direto ---
     if(ST.moving) {
       if(ST.sel !== w.id) {
-        selWidget(w.id, pgIdx);
-        return; // Primeiro clique apenas seleciona; o próximo arrasta.
+        return;
       }
       e.stopPropagation(); e.preventDefault();
       const start=getXY(e), sl=w.x, st=w.y;
@@ -96,7 +102,7 @@ function mkWidget(w,pgIdx){
       const mv = ev => {
         const cur=getXY(ev);
         const baseW = ST.orientation === 'landscape' ? 915 : 412;
-        const baseH = ST.orientation === 'landscape' ? 412 : 915;
+        const baseH = ST.orientation === 'landscape' ? 412 : 820;
         const dx = ((cur.x - start.x) / ST.scale) / baseW * 100;
         const dy = ((cur.y - start.y) / ST.scale) / baseH * 100;
         
@@ -203,10 +209,23 @@ function openLayerPicker(widgets, x, y, pgIdx) {
 
   picker.innerHTML = h;
 
-  // Posiciona a tabelinha. Garante que não sai da tela.
+  // Converte coordenadas físicas (x, y) da janela para coordenadas lógicas do #viewport (v6.9.0)
+  const baseW = ST.orientation === 'landscape' ? 915 : 412;
+  const baseH = ST.orientation === 'landscape' ? 412 : 820;
+  const winW = window.innerWidth;
+  const winH = window.innerHeight;
+  const scaledW = baseW * ST.scale;
+  const scaledH = baseH * ST.scale;
+  const offsetX = (winW - scaledW) / 2;
+  const offsetY = (winH - scaledH) / 2;
+
+  const logicalX = (x - offsetX) / ST.scale;
+  const logicalY = (y - offsetY) / ST.scale;
+
   const pw = 200, ph = 50 + widgets.length * 48;
-  const px = Math.min(x, window.innerWidth - pw - 10);
-  const py = Math.min(y, window.innerHeight - ph - 10);
+  const px = Math.max(10, Math.min(logicalX, baseW - pw - 10));
+  const py = Math.max(10, Math.min(logicalY, baseH - ph - 10));
+  
   picker.style.left = px + 'px';
   picker.style.top = py + 'px';
   picker.classList.add('open');
@@ -395,6 +414,23 @@ function buildSensorSelect(currentVal, id) {
   return h + `</select>`;
 }
 
+function buildNeedleSelect(currentVal, id) {
+  let h = `<select class="fsel" id="${id}">`;
+  const grps = {};
+  Object.values(NEEDLES_CONFIG).forEach(n => {
+    if(!grps[n.grp]) grps[n.grp] = [];
+    grps[n.grp].push(n);
+  });
+  for(const gName in grps) {
+    h += `<optgroup label="${gName}">`;
+    grps[gName].forEach(n => {
+      h += `<option value="${n.id}" ${currentVal == n.id ? 'selected' : ''}>${n.nome}</option>`;
+    });
+    h += `</optgroup>`;
+  }
+  return h + `</select>`;
+}
+
 function openPanel(wid,pi){
   const w=ST.cfg.orientations[ST.orientation][pi].widgets.find(x=>x.id==wid); if(!w)return;
   
@@ -422,7 +458,7 @@ function openPanel(wid,pi){
       <div class="fg"><label class="fl">Cor das Linhas</label><input type="color" class="fcol" id="c-r-cor" value="${w.cor}"></div>
 
       <div class="csec">TEXTO E ESCALA</div>
-      <div class="fg"><label class="fl">Estilo Fonte</label><select class="fsel" id="c-r-font"><option value="Orbitron" ${w.rFont==='Orbitron'?'selected':''}>Orbitron</option><option value="Oxanium" ${w.rFont==='Oxanium'?'selected':''}>Oxanium</option><option value="Michroma" ${w.rFont==='Michroma'?'selected':''}>Michroma</option><option value="Teko" ${w.rFont==='Teko'?'selected':''}>Teko</option></select></div>
+      <div class="fg"><label class="fl">Estilo Fonte</label><select class="fsel" id="c-r-font"><option value="Orbitron" ${w.rFont==='Orbitron'?'selected':''}>Orbitron</option><option value="Oxanium" ${w.rFont==='Oxanium'?'selected':''}>Oxanium</option><option value="Michroma" ${w.rFont==='Michroma'?'selected':''}>Michroma</option><option value="Teko" ${w.rFont==='Teko'?'selected':''}>Teko</option><option value="Audiowide" ${w.rFont==='Audiowide'?'selected':''}>Audiowide</option><option value="Electrolize" ${w.rFont==='Electrolize'?'selected':''}>Electrolize</option><option value="Chakra Petch" ${w.rFont==='Chakra Petch'?'selected':''}>Chakra Petch</option><option value="Press Start 2P" ${w.rFont==='Press Start 2P'?'selected':''}>Press Start 2P</option><option value="Megrim" ${w.rFont==='Megrim'?'selected':''}>Megrim</option></select></div>
       <div class="fg"><label class="fl">Tamanho Fonte: <span class="fv" id="vfz">${w.rFontSz||12}</span>px</label><input type="range" class="frange" id="c-r-fz" min="6" max="30" value="${w.rFontSz||12}"></div>
       <div class="fg"><label class="fl">Cor dos Números</label><input type="color" class="fcol" id="c-r-l-cor" value="${w.rLabelCor||w.cor}"></div>
       <div class="fg"><label class="fl">Distância Texto: <span class="fv" id="vlrd">${w.rLabelOffset??10}</span>px</label><input type="range" class="frange" id="c-r-l-off" min="0" max="100" value="${w.rLabelOffset??10}"></div>
@@ -442,37 +478,10 @@ function openPanel(wid,pi){
       </div>
     `;
   } else if(T === 'imagem_pura'){
-    let optStr = '<option value="">(Nenhuma Selecionada)</option>';
-    let customImgOption = '';
-    
-    // Se a imagem atual for um Base64 personalizado que ainda não entrou na lista oficial (fallback)
-    if (w.url && w.url.startsWith('data:image') && (!ST.imgList || !ST.imgList.includes(w.url))) {
-      customImgOption = `<option value="${w.url}" selected>➔ Customizada Legado</option>`;
-    }
-    
-    if (ST.imgList && ST.imgList.length > 0) {
-      ST.imgList.forEach(img => {
-        let isCustom = img.startsWith('data:image');
-        let lbl = isCustom ? "Customizada Salva" : img;
-        optStr += `<option value="${img}" ${w.url===img?'selected':''}>➔ ${lbl}</option>`;
-      });
-    }
-
     h += `<div class="csec">AJUSTES DA IMAGEM LIVRE</div>
       <div class="fg">
-        <label class="fl">Escolha o Relógio / Imagem</label>
-        <div style="display:flex; gap: 5px;">
-          <select class="fsel" id="c-img-url" style="flex:1;">
-            ${customImgOption}
-            ${optStr}
-          </select>
-          <button class="pbtn" id="btn-del-img" style="background:#e74c3c; padding: 0 10px; display:${w.url && w.url.startsWith('data:image') ? 'block' : 'none'};" title="Apagar da Galeria">🗑️</button>
-        </div>
-      </div>
-      <div class="fg">
-        <label class="fl" style="color: var(--cyan);">OU Imagem do Celular / PC</label>
-        <input type="file" id="w-file-picker" accept="image/*" style="display: none;">
-        <button class="pbtn pb-add" id="btn-trigger-w-picker" style="width: 100%; border: 1px dashed var(--cyan); background: transparent; color: var(--cyan);">📷 CARREGAR DA GALERIA</button>
+        <label class="fl">Imagem / Relógio</label>
+        <button class="pbtn pb-add" id="btn-open-w-gallery" style="width: 100%; border: 1px solid var(--roxo-c); background: rgba(155,0,255,0.1); color: var(--branco);">🖼️ ABRIR GALERIA VISUAL</button>
       </div>
       <div class="fg"><label class="fl">Cor do Filtro (Overlay)</label><input type="color" class="fcol" id="c-r-cor" value="${w.cor||'#ffffff'}"></div>
       <div class="fg"><label class="fl">Intensidade do Filtro: <span class="fv" id="vopfiltro">${Math.round((w.corOp??0)*100)}</span>%</label><input type="range" class="frange" id="c-cor-op" min="0" max="100" value="${Math.round((w.corOp??0)*100)}"></div>
@@ -504,6 +513,10 @@ function openPanel(wid,pi){
         </select>
       </div>
       <div class="fg-row" style="display:flex;gap:10px">
+        <div style="flex:1"><label class="fl">Mínimo</label><input type="number" class="finp" id="c-min" value="${w.minValor??0}"></div>
+        <div style="flex:1"><label class="fl">Máximo</label><input type="number" class="finp" id="c-max" value="${w.maxValor??100}"></div>
+      </div>
+      <div class="fg-row" style="display:flex;gap:10px">
         <div style="flex:1"><label class="fl">Cor Acesa</label><input type="color" class="fcol" id="c-cor" value="${w.cor||'#ff0000'}"></div>
         <div style="flex:1"><label class="fl">Cor Apagada</label><input type="color" class="fcol" id="c-cor2" value="${w.cor2||'#333333'}"></div>
       </div>
@@ -512,7 +525,9 @@ function openPanel(wid,pi){
     `;
   } else {
     h += `<div class="csec">ESTILO E SENSOR</div>
-      <div class="fg" style="display:${(T==='agulha_pura'?'block':'none')}"><label class="fl">Modelo Agulha</label><select class="fsel" id="c-tagulha"><option value="0" ${w.tagulha==0?'selected':''}>⭐ Neon Glow</option><option value="1" ${w.tagulha==1?'selected':''}>📍 Traço Fino</option><option value="2" ${w.tagulha==2?'selected':''}>🔺 Triângulo</option><option value="3" ${w.tagulha==3?'selected':''}>🖍️ Ponta Cor</option></select></div>
+      <div class="fg" style="display:${(T==='agulha_pura'?'block':'none')}"><label class="fl">Modelo Agulha</label>
+        ${buildNeedleSelect(w.tagulha ?? 0, 'c-tagulha')}
+      </div>
       <div class="fg" style="display:${(T==='agulha_pura'?'block':'none')}">
         <label class="fl">Suavização Agulha</label>
         <select class="fsel" id="c-smooth-k">
@@ -523,7 +538,7 @@ function openPanel(wid,pi){
         </select>
       </div>
       <div class="fg" style="display:${(w.sensor==6?'block':'none')}"><label class="fl">Capacidade do Tanque (L)</label><input type="number" class="finp" id="c-tank-cap" value="${w.tankCap??44}" step="1" min="10" max="150"></div>
-      <div class="fg" style="display:${(T==='numero_puro'?'block':'none')}"><label class="fl">Estilo Fonte</label><select class="fsel" id="c-font"><option value="Orbitron" ${w.fontFamily==='Orbitron'?'selected':''}>Orbitron</option><option value="Oxanium" ${w.fontFamily==='Oxanium'?'selected':''}>Oxanium</option><option value="Michroma" ${w.fontFamily==='Michroma'?'selected':''}>Michroma</option><option value="Teko" ${w.fontFamily==='Teko'?'selected':''}>Teko</option></select></div>
+      <div class="fg" style="display:${(T==='numero_puro'?'block':'none')}"><label class="fl">Estilo Fonte</label><select class="fsel" id="c-font"><option value="Orbitron" ${w.fontFamily==='Orbitron'?'selected':''}>Orbitron</option><option value="Oxanium" ${w.fontFamily==='Oxanium'?'selected':''}>Oxanium</option><option value="Michroma" ${w.fontFamily==='Michroma'?'selected':''}>Michroma</option><option value="Teko" ${w.fontFamily==='Teko'?'selected':''}>Teko</option><option value="Audiowide" ${w.fontFamily==='Audiowide'?'selected':''}>Audiowide</option><option value="Electrolize" ${w.fontFamily==='Electrolize'?'selected':''}>Electrolize</option><option value="Chakra Petch" ${w.fontFamily==='Chakra Petch'?'selected':''}>Chakra Petch</option><option value="Press Start 2P" ${w.fontFamily==='Press Start 2P'?'selected':''}>Press Start 2P</option><option value="Megrim" ${w.fontFamily==='Megrim'?'selected':''}>Megrim</option></select></div>
       <div class="fg" style="display:${(T==='arco_puro'?'block':'none')}"><label class="fl">Estilo das Pontas</label><select class="fsel" id="c-linecap"><option value="butt" ${w.lineCap==='butt'?'selected':''}>Reto</option><option value="round" ${w.lineCap==='round'?'selected':''}>Arredondado</option></select></div>
       <div class="fg"><label class="fl">Sensor</label>
         ${buildSensorSelect(w.sensor, 'c-sensor')}
@@ -577,7 +592,7 @@ function openPanel(wid,pi){
       <div class="fg" style="display:${(T==='barra_pura'?'block':'none')}"><label class="fl">Divisórias: <span class="fv" id="vdiv">${w.divisores||10}</span></label><input type="range" class="frange" id="c-divs" min="1" max="60" value="${w.divisores||10}"></div>
       <div class="fg" style="display:${(T==='barra_pura'?'block':'none')}"><label class="fl">Espaçamento: <span class="fv" id="vspc">${w.spacing??2}</span>px</label><input type="range" class="frange" id="c-spacing" min="0" max="20" value="${w.spacing??2}"></div>
       <div class="fg" style="display:${(T==='barra_pura'?'block':'none')}"><label class="fl">Orientação</label><select class="fsel" id="c-direction"><option value="h" ${w.direction==='h'?'selected':''}>Horizontal</option><option value="v" ${w.direction==='v'?'selected':''}>Vertical</option></select></div>
-      <div class="fg-row" style="display:${(T==='agulha_pura'||T==='barra_pura'||T==='arco_puro')?'flex':'none'};gap:10px"><div style="flex:1"><label class="fl">Mínimo</label><input type="number" class="finp" id="c-min" value="${w.minValor??0}"></div><div style="flex:1"><label class="fl">Máximo</label><input type="number" class="finp" id="c-max" value="${w.maxValor??100}"></div></div>
+      <div class="fg-row" style="display:${(T==='agulha_pura'||T==='barra_pura'||T==='arco_puro'||T==='luz_espia')?'flex':'none'};gap:10px"><div style="flex:1"><label class="fl">Mínimo</label><input type="number" class="finp" id="c-min" value="${w.minValor??0}"></div><div style="flex:1"><label class="fl">Máximo</label><input type="number" class="finp" id="c-max" value="${w.maxValor??100}"></div></div>
       <div class="fg" style="display:${(T==='arco_puro'||T==='agulha_pura'?'block':'none')}"><label class="fl">Ângulo Início: <span class="fv" id="vai" style="color: #00ff88 !important; text-shadow: 0 0 8px rgba(0, 255, 136, 0.4);">${w.angIni||135}</span>°</label><input type="range" class="frange" id="c-ai" min="0" max="360" value="${w.angIni||135}"></div>
       <div class="fg" style="display:${(T==='arco_puro'||T==='agulha_pura'?'block':'none')}"><label class="fl">Ângulo Total: <span class="fv" id="vsw" style="color: #ff3355 !important; text-shadow: 0 0 8px rgba(255, 51, 85, 0.4);">${w.angSweep||270}</span>°</label><input type="range" class="frange" id="c-sw" min="1" max="360" value="${w.angSweep||270}"></div>
       <div class="fg" style="display:${(T==='numero_puro'?'block':'none')}"><label class="fl">Unidade</label><input type="text" class="finp" id="c-unit" value="${w.unidade||''}"></div>
@@ -649,7 +664,7 @@ function applyConfig(changedId){
     'c-sz', 'c-r-sz', 'c-thickness', 'c-r-tl', 'c-r-thk', 'c-r-dens', 
     'c-r-curv', 'c-r-start', 'c-r-l-off', 'c-r-l-side', 'c-r-t-side', 
     'c-r-fz', 'c-divs', 'c-spacing', 'c-direction', 'c-r-dir', 
-    'c-img-url', 'c-luz-sym', 'c-cor-op'
+    'c-luz-sym', 'c-cor-op'
   ];
 
   const div = document.getElementById(`W-${w.id}`);
@@ -696,19 +711,341 @@ function openAddMenu(){
         if(t.id==='regua_pura') { Object.assign(nw, { rMin:0, rMax:100, rCurv:0, rStart:0, rStyle:0, rFont:'Orbitron', rFontSz:12, rTickLen:15, rDens:5, rThick:2, rDir:'h' }); }
         if(t.id==='numero_puro') nw.maxValor=8000;
         if(t.id==='barra_pura') nw.maxValor=100; // Barras: sensores comuns são 0-100%
-        if(t.id==='imagem_pura') { nw.url='/flames.webp'; nw.tamanho=100; }
+        if(t.id==='imagem_pura') { nw.url='relogios/retro.png'; nw.tamanho=100; }
         if(t.id==='luz_espia') { Object.assign(nw, {luzSym:'alerta', luzTrig:80, luzInvert:0, cor:'#ff0000', cor2:'#333333', tamanho:60, sensor:'demo'}); }
         ST.cfg.orientations[ST.orientation][ST.pg].widgets.push(nw); mkWidget(nw,ST.pg); closeAddMenu(); selWidget(id, ST.pg); 
     }; grid.appendChild(d);
-  });document.getElementById('addmenu').classList.add('open');
+  });
+  
+  // Botão de Importar/Exportar
+  const dl=document.createElement('div'); 
+  dl.className='amitem'; 
+  dl.style.border="1px dashed var(--roxo-c)"; 
+  dl.innerHTML=`<div class="amicon" style="color:var(--roxo-c);">&lt;/&gt;</div><div class="amname" style="color:var(--roxo-c);">Importar / Exportar</div>`;
+  dl.onclick=()=>{
+    closeAddMenu();
+    openLayoutModal();
+  };
+  grid.appendChild(dl);
+  
+  document.getElementById('addmenu').classList.add('open');
 }
 
 function closeAddMenu(){document.getElementById('addmenu').classList.remove('open');}
+
+function openLayoutModal() {
+  const modal = document.getElementById('layout-modal');
+  if(!modal) return;
+  modal.style.display = 'flex';
+  
+  const pgData = ST.cfg.orientations[ST.orientation][ST.pg];
+  
+  // Limpa imagens em base64 grandes para não travar a exportação
+  const exportData = JSON.parse(JSON.stringify(pgData));
+  if (exportData.bg && exportData.bg.img && exportData.bg.img.startsWith('data:image')) {
+    exportData.bg.img = '';
+  }
+  exportData.widgets.forEach(w => {
+    if (w.tipo === 'imagem_pura' && w.url && w.url.startsWith('data:image')) {
+      w.url = '';
+    }
+  });
+  
+  const jsonStr = JSON.stringify(exportData);
+  const base64Str = 'PD-Layout:' + btoa(unescape(encodeURIComponent(jsonStr)));
+  
+  const txtExport = document.getElementById('layout-export-txt');
+  if(txtExport) txtExport.value = base64Str;
+  
+  const txtImport = document.getElementById('layout-import-txt');
+  if(txtImport) txtImport.value = '';
+}
+
+document.body.addEventListener('click', e => {
+  if (e.target.id === 'btn-close-layout') {
+    document.getElementById('layout-modal').style.display = 'none';
+  }
+  
+  if (e.target.id === 'btn-copy-layout') {
+    const txt = document.getElementById('layout-export-txt');
+    if(txt) {
+      txt.select();
+      document.execCommand('copy');
+      toast("📋 CÓDIGO COPIADO!");
+    }
+  }
+  
+  if (e.target.id === 'btn-import-layout') {
+    const txt = document.getElementById('layout-import-txt').value.trim();
+    if (!txt.startsWith('PD-Layout:')) {
+      alert("❌ Código de layout inválido!");
+      return;
+    }
+    
+    try {
+      const base64Str = txt.replace('PD-Layout:', '');
+      const jsonStr = decodeURIComponent(escape(atob(base64Str)));
+      const importData = JSON.parse(jsonStr);
+      
+      if (!importData.widgets || !importData.bg) {
+        throw new Error("Formato inválido");
+      }
+      
+      // Confirmação
+      if (!confirm("⚠️ Atenção: Isso vai substituir todo o painel atual. Continuar?")) return;
+      
+      // CORREÇÃO CRÍTICA: Reatribui IDs únicos a todos os widgets importados.
+      // Sem isso, widgets com o mesmo ID de outras páginas conflitam no ST.cvs,
+      // sobrescrevendo o contexto canvas e causando o bug do "widget fantasma".
+      importData.widgets.forEach(w => {
+        w.id = 'w' + Date.now() + Math.floor(Math.random() * 9999);
+      });
+
+      // Limpa DOM atual
+      ST.cfg.orientations[ST.orientation][ST.pg].widgets.forEach(w => {
+        rmWidget(w.id);
+      });
+      
+      // Aplica novos dados
+      ST.cfg.orientations[ST.orientation][ST.pg] = importData;
+      
+      // Reconstrói DOM
+      applyPageBg(ST.pg);
+      importData.widgets.forEach(w => {
+        mkWidget(w, ST.pg);
+      });
+      
+      saveToESP();
+      document.getElementById('layout-modal').style.display = 'none';
+      toast("🚀 LAYOUT IMPORTADO COM SUCESSO!");
+      
+    } catch(err) {
+      console.error(err);
+      alert("❌ Erro ao ler código: " + err.message);
+    }
+  }
+});
+
 
 export {
   mkWidget, rmWidget, toggleEditor, enterEditor, exitEditor,
   openLayerPicker, closeLayerPicker, joinGroup, separarWidget,
   openBgMenu, closeBgMenu, applyBg, selWidget, toggleMoveMode,
   toggleMultiMode, closePanel, openPanel, applyConfig, delWidget,
-  openAddMenu, closeAddMenu
+  openAddMenu, closeAddMenu, openGallery
 };
+
+let currentGalleryTarget = 'bg'; // 'bg' ou 'widget'
+let currentGalleryTab = 'custom'; // 'custom' ou 'system'
+let currentGalleryWidgetId = null; // Guarda o ID do widget selecionado antes de fechar o painel
+
+window.renderGalleryGrid = renderGalleryGrid; // expor para o main.js atualizar ao fazer upload
+
+// ================================================================
+// ★ GALERIA VISUAL (INDEXEDDB & SISTEMA) ★
+// ================================================================
+
+function openGallery(target) {
+  currentGalleryTarget = target;
+  currentGalleryTab = 'custom';
+  currentGalleryWidgetId = ST.sel; // Guarda quem era o widget antes de fechar o painel
+  
+  // Fecha menus para que a galeria fique limpa
+  closeBgMenu();
+  closePanel();
+  
+  const modal = document.getElementById('gallery-modal');
+  if(!modal) return;
+  modal.classList.add('active');
+  
+  // A vassourinha fica só pro fundo
+  const btnClear = document.getElementById('btn-gallery-clear');
+  if (btnClear) {
+    btnClear.style.display = target === 'bg' ? 'inline-block' : 'none';
+  }
+  
+  document.querySelectorAll('.g-tab').forEach(t => t.classList.remove('active'));
+  document.querySelector('.g-tab[data-tab="custom"]')?.classList.add('active');
+  
+  renderGalleryGrid();
+}
+
+function closeGallery() {
+  document.getElementById('gallery-modal')?.classList.remove('active');
+}
+
+async function renderGalleryGrid(forceTab = null) {
+  if (forceTab) currentGalleryTab = forceTab;
+  const grid = document.getElementById('gallery-grid');
+  if(!grid) return;
+  grid.innerHTML = '<div style="color:#aaa;text-align:center;width:100%;grid-column:1/-1;">Carregando...</div>';
+  
+  if (currentGalleryTab === 'system') {
+    let html = '';
+    LOCAL_IMAGES.forEach(url => {
+      html += `
+        <div class="g-item" onclick="window.selectGalleryImage('${url}', false)">
+          <img src="${url}" />
+        </div>
+      `;
+    });
+    grid.innerHTML = html;
+  } else {
+    try {
+      const items = await getAllCustomImages();
+      if (items.length === 0) {
+        grid.innerHTML = '<div style="color:#aaa;text-align:center;width:100%;grid-column:1/-1;font-family:Orbitron;">NENHUMA IMAGEM SALVA.<br>CLIQUE EM CARREGAR ACIMA.</div>';
+        return;
+      }
+      
+      let html = '';
+      items.forEach(item => {
+        html += `
+          <div class="g-item" onclick="window.selectGalleryImage('${item.id}', true)">
+            <img src="${item.data}" />
+          </div>
+        `;
+      });
+      grid.innerHTML = html;
+    } catch(e) {
+      grid.innerHTML = '<div style="color:red;text-align:center;width:100%;grid-column:1/-1;">ERRO AO LER BANCO DE DADOS</div>';
+    }
+  }
+}
+
+// Funções expostas no window para onclick no HTML
+window.selectGalleryImage = async function(idOrUrl, isCustom = false) {
+  const modal = document.getElementById('gallery-modal');
+  if (modal && modal.classList.contains('delete-mode')) {
+    if (!isCustom) {
+      alert("❌ Não é possível excluir imagens do sistema!");
+      return;
+    }
+    if (confirm("⚠️ Tem certeza que deseja EXCLUIR esta imagem da galeria? O fundo/widget ficará preto se estiver usando ela.")) {
+      try {
+        const { getCustomImage, deleteCustomImage } = await import('./db.js');
+        const itemToDelete = await getCustomImage(idOrUrl);
+        
+        await deleteCustomImage(idOrUrl);
+        
+        // Se a imagem apagada estiver sendo usada no fundo atual, limpa o fundo
+        const pg = ST.cfg.orientations[ST.orientation][ST.pg];
+        if (pg && itemToDelete && pg.bg.img === itemToDelete.data) {
+          pg.bg.img = '';
+          applyPageBg(ST.pg);
+          saveToESP();
+        }
+        
+        // Se estiver sendo usada no widget selecionado, limpa a img
+        if (currentGalleryWidgetId && itemToDelete) {
+          const w = ST.widgetMap.get(currentGalleryWidgetId);
+          if (w && w.url === itemToDelete.data) {
+            w.url = '';
+            const div = document.getElementById(`W-${w.id}`);
+            if (div) {
+              const img = div.querySelector('img');
+              if (img) img.src = '';
+            }
+            saveToESP();
+          }
+        }
+        
+        renderGalleryGrid();
+        toast("🗑️ IMAGEM APAGADA!");
+      } catch(e) {
+        alert("Erro ao apagar: " + e);
+      }
+    }
+    return; // Não aplica a imagem, apenas tentou excluir
+  }
+
+  let url = idOrUrl;
+  if (isCustom) {
+    try {
+      const { getCustomImage } = await import('./db.js');
+      const item = await getCustomImage(idOrUrl);
+      if (item) url = item.data;
+      else return;
+    } catch(e) {
+      console.error(e);
+      return;
+    }
+  }
+
+  if (currentGalleryTarget === 'bg') {
+    const pg = ST.cfg.orientations[ST.orientation][ST.pg];
+    if(pg) {
+      pg.bg.img = url;
+      applyPageBg(ST.pg);
+      saveToESP();
+      toast("📸 FUNDO APLICADO!");
+    }
+  } else if (currentGalleryTarget === 'widget') {
+    if (currentGalleryWidgetId) {
+      const w = ST.widgetMap.get(currentGalleryWidgetId);
+      if (w) {
+        w.url = url;
+        const div = document.getElementById(`W-${w.id}`);
+        if (div) {
+          const img = div.querySelector('img');
+          if (img) img.src = w.url || '';
+        } else {
+          mkWidget(w, ST.pg);
+        }
+        saveToESP();
+        toast("📸 IMAGEM ATUALIZADA!");
+      }
+    }
+  }
+  closeGallery();
+};
+
+// Removido galleryRename e galleryDelete pois agora são internas ao modo exclusão
+
+document.body.addEventListener('click', e => {
+  // Tabs da galeria
+  if (e.target.classList.contains('g-tab')) {
+    document.querySelectorAll('.g-tab').forEach(t => t.classList.remove('active'));
+    e.target.classList.add('active');
+    
+    // Se mudar de aba para a aba do sistema, talvez seja bom desativar o modo lixeira
+    const modal = document.getElementById('gallery-modal');
+    if(modal) modal.classList.remove('delete-mode');
+    
+    renderGalleryGrid(e.target.dataset.tab);
+  }
+  
+  if (e.target.id === 'btn-close-gallery') {
+    closeGallery();
+  }
+  
+  if (e.target.id === 'btn-gallery-trash') {
+    const modal = document.getElementById('gallery-modal');
+    if(modal) {
+      modal.classList.toggle('delete-mode');
+      if (modal.classList.contains('delete-mode')) {
+        toast("🗑️ MODO EXCLUSÃO: Clique em uma imagem para apagar.");
+      } else {
+        toast("MODO SELEÇÃO RESTAURADO");
+      }
+    }
+  }
+  
+  if (e.target.id === 'btn-gallery-clear') {
+    window.selectGalleryImage('', false);
+  }
+  
+  if (e.target.id === 'btn-gallery-upload') {
+    document.getElementById('gallery-file-picker')?.click();
+  }
+  
+  // Botões que abrem a galeria
+  if (e.target.id === 'btn-open-bg-gallery') {
+    openGallery('bg');
+  }
+  
+  if (e.target.id === 'btn-open-w-gallery') {
+    openGallery('widget');
+  }
+});
+

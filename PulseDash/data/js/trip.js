@@ -30,6 +30,191 @@ export const TRIP_A = {
   cost: 0
 };
 
+// === Histórico persistido no APP (acumulado localmente) ===
+let tripHistory = [];
+
+function loadTripHistory() {
+  try {
+    const saved = localStorage.getItem('pulsedash_trip_history');
+    if (saved) {
+      tripHistory = JSON.parse(saved) || [];
+    }
+  } catch (e) {
+    console.error('Erro ao carregar histórico de viagens:', e);
+    tripHistory = [];
+  }
+}
+
+function saveTripHistory() {
+  try {
+    localStorage.setItem('pulsedash_trip_history', JSON.stringify(tripHistory));
+  } catch (e) {
+    console.error('Erro ao salvar histórico de viagens:', e);
+  }
+}
+
+function mergeAndSaveHistory(newData) {
+  const map = new Map();
+  // Keep existing
+  tripHistory.forEach(item => {
+    if (item && item.ts) map.set(item.ts, item);
+  });
+  // Add/overwrite from new data from ESP
+  (newData || []).forEach(item => {
+    if (item && item.ts) map.set(item.ts, item);
+  });
+  tripHistory = Array.from(map.values())
+    .sort((a, b) => b.ts - a.ts);
+  // Limit to reasonable size (e.g. last 60 days) so it doesn't grow forever
+  if (tripHistory.length > 60) {
+    tripHistory = tripHistory.slice(0, 60);
+  }
+  saveTripHistory();
+}
+
+export function renderTripHistoryList(dataOverride = null) {
+  const list = document.getElementById('trip-hist-list');
+  if (!list) return;
+
+  const sourceData = dataOverride || tripHistory;
+  if (!sourceData || !sourceData.length) {
+    list.innerHTML = '<div style="text-align: center; color: #666; font-family: \'Rajdhani\'; font-size: 12px; margin-top: 30px;">Nenhum histórico disponível.</div>';
+    return;
+  }
+
+  const sorted = [...sourceData].sort((a, b) => b.ts - a.ts);
+
+  // Calcular resumo acumulado (dos dados que estamos mostrando)
+  let totalDist = 0;
+  let totalFuel = 0;
+  let totalCost = 0;
+  let daysWithPrice = 0;
+
+  sorted.forEach(item => {
+    const dist = item.dist || 0;
+    const fuel = item.fuel || 0;
+    const p = (item.price !== undefined && item.price > 0) ? item.price : TRIP.price;
+    totalDist += dist;
+    totalFuel += fuel;
+    if (p !== null && p > 0) {
+      totalCost += fuel * p;
+      daysWithPrice++;
+    }
+  });
+
+  const avgCons = totalFuel > 0 ? (totalDist / totalFuel).toFixed(1) : '0.0';
+  const costStr = daysWithPrice > 0 ? totalCost.toFixed(2) : '--';
+
+  // Resumo no topo (sempre primeiro)
+  let html = `
+    <div class="trip-hist-item trip-hist-summary">
+      <div class="trip-hist-title">
+        <span>RESUMO SEMANAL</span>
+        <span style="color: var(--roxo-c);">${totalDist.toFixed(1)} KM</span>
+      </div>
+      <div class="trip-hist-stats">
+        <div class="trip-hist-stat">
+          <span>CONSUMO MÉD.</span>
+          <span>${avgCons} km/l</span>
+        </div>
+        <div class="trip-hist-stat">
+          <span>COMBUST. TOTAL</span>
+          <span>${totalFuel.toFixed(1)} L</span>
+        </div>
+        <div class="trip-hist-stat">
+          <span>CUSTO TOTAL</span>
+          <span>R$ ${costStr}</span>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Itens de cada dia
+  sorted.forEach((item, idx) => {
+    const utcEpoch = item.ts + (new Date().getTimezoneOffset() * 60);
+    const d = new Date(utcEpoch * 1000);
+    const dayStr = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+
+    const dist = item.dist || 0;
+    const fuel = item.fuel || 0;
+    const avgC = fuel > 0 ? (dist / fuel).toFixed(1) : '0.0';
+    const histP = (item.price !== undefined && item.price > 0) ? item.price : TRIP.price;
+    const cst = (histP !== null && histP > 0) ? (fuel * histP).toFixed(2) : '--';
+
+    html += `
+      <div class="trip-hist-item" data-idx="${idx}">
+        <div class="trip-hist-title">
+          <span>DIA ${dayStr}</span>
+          <span style="color: var(--cyan);">${dist.toFixed(1)} KM</span>
+        </div>
+        <div class="trip-hist-stats">
+          <div class="trip-hist-stat">
+            <span>CONSUMO</span>
+            <span>${avgC} km/l</span>
+          </div>
+          <div class="trip-hist-stat">
+            <span>COMBUST.</span>
+            <span>${fuel.toFixed(1)} L</span>
+          </div>
+          <div class="trip-hist-stat">
+            <span>CUSTO</span>
+            <span>R$ ${cst}</span>
+          </div>
+        </div>
+      </div>
+    `;
+  });
+
+  list.innerHTML = html;
+
+  // Clique só nos dias (não no resumo)
+  list.querySelectorAll('.trip-hist-item:not(.trip-hist-summary)').forEach(el => {
+    const handleSelect = (evt) => {
+      evt.preventDefault();
+      evt.stopPropagation();
+
+      const idx = parseInt(el.dataset.idx);
+      const item = sorted[idx];
+      if (item) {
+        TRIP.viewingHistory = true;
+        const dist = item.dist || 0;
+        const fuel = item.fuel || 0;
+        const tTot = item.ttot || 0;
+        const tDri = item.tdri || 0;
+        const avgSpeed = tDri > 0 ? (dist / (tDri / 3600.0)) : 0;
+        const avgC = fuel > 0 ? (dist / fuel) : 0;
+        const histP = (item.price !== undefined && item.price > 0) ? item.price : TRIP.price;
+        const costVal = (histP !== null && histP > 0) ? (fuel * histP) : 0;
+
+        ST.dados.tripDistance = dist;
+        ST.dados.tripFuel = fuel;
+        ST.dados.tripAvgSpeed = avgSpeed;
+        ST.dados.tripAvgCons = avgC;
+        ST.dados.tripCost = costVal;
+        ST.dados.tripTimeTotal = tTot / 60.0;
+
+        const utcEpoch = item.ts + (new Date().getTimezoneOffset() * 60);
+        const d = new Date(utcEpoch * 1000);
+        const dayStr = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+
+        const elTitle = document.getElementById('trip-main-title');
+        if (elTitle) elTitle.textContent = `HISTÓRICO: DIA ${dayStr}`;
+
+        updateTripUI();
+
+        const popHist = document.getElementById('trip-hist-popup');
+        if (popHist) popHist.style.display = 'none';
+      }
+    };
+
+    el.addEventListener('click', handleSelect);
+    el.addEventListener('touchend', handleSelect);
+  });
+}
+
+// Expor para o main.js poder chamar na abertura do popup
+window.renderTripHistoryList = renderTripHistoryList;
+
 // Rastreadores de delta para acúmulo preciso de Trip A (Opção B)
 let prevTripDist = -1;
 let prevTripFuel = -1;
@@ -85,6 +270,9 @@ export function initTrip() {
   if (selType) selType.value = TRIP.fuelType;
   
   updateTripUI();
+
+  // Carrega histórico acumulado salvo no app
+  loadTripHistory();
 
   // Inicia o loop do Computador de Bordo a 2Hz (500ms) - Otimização de Performance
   setInterval(() => {
@@ -372,47 +560,9 @@ document.addEventListener('trip_hist_data', (e) => {
     return;
   }
 
-  // Ordena por timestamp mais recente
-  data.sort((a, b) => b.ts - a.ts);
-
-  let html = '';
-  data.forEach((item, idx) => {
-    // Reverte o fuso horário local para exibir a data correta
-    const utcEpoch = item.ts + (new Date().getTimezoneOffset() * 60);
-    const d = new Date(utcEpoch * 1000);
-    const dayStr = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-    
-    const dist = item.dist || 0;
-    const fuel = item.fuel || 0;
-    const avgCons = fuel > 0 ? (dist / fuel).toFixed(1) : '0.0';
-    const histPrice = (item.price !== undefined && item.price > 0) ? item.price : TRIP.price;
-    const cost = (histPrice !== null && histPrice > 0) ? (fuel * histPrice).toFixed(2) : '--';
-    
-    html += `
-      <div class="trip-hist-item" data-idx="${idx}">
-        <div class="trip-hist-title">
-          <span>DIA ${dayStr}</span>
-          <span style="color: var(--cyan);">${dist.toFixed(1)} KM</span>
-        </div>
-        <div class="trip-hist-stats">
-          <div class="trip-hist-stat">
-            <span>CONSUMO</span>
-            <span>${avgCons} km/l</span>
-          </div>
-          <div class="trip-hist-stat">
-            <span>COMBUST.</span>
-            <span>${fuel.toFixed(1)} L</span>
-          </div>
-          <div class="trip-hist-stat">
-            <span>CUSTO</span>
-            <span>R$ ${cost}</span>
-          </div>
-        </div>
-      </div>
-    `;
-  });
-  
-  list.innerHTML = html;
+  // Acumula no app + salva + re-render (com resumo no topo)
+  mergeAndSaveHistory(data);
+  renderTripHistoryList(tripHistory);
 
   // Adiciona cliques para carregar no "Time Machine" de widgets
   list.querySelectorAll('.trip-hist-item').forEach(el => {

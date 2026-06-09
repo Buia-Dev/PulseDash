@@ -1,7 +1,7 @@
 'use strict';
 
 const ST = {
-  pg: 0, editor: false, sel: null, moving: false, cfg: null,
+  pg: 0, editor: false, sel: null, moving: false, movingBg: false, cfg: null,
   dados: {}, smooth: {},
   cvs: {}, wakeLock: null, imgList: [],
   fetching: false,
@@ -13,7 +13,6 @@ const ST = {
 };
 
 const LOCAL_IMAGES = [
-  'relogios/flames.webp',
   'relogios/gavioes.webp',
   'relogios/pikachu.webp',
   'relogios/bling.png',
@@ -91,7 +90,7 @@ const CFG_DEF = {
   orientations: {
     portrait: [
       { 
-        bg:{img:'',size:'cover'}, 
+        bg:{img:'',size:'cover',opacity:1,x:0,y:0}, 
         widgets:[
           { id:'w1', tipo:'arco_puro', x:50, y:45, tamanho:400, cor:'#00f2ff', thickness:20, sensor:'demo', rotation:0, angIni:140, angSweep:260, lineCap:'round', opacity:1 },
           { id:'w2', tipo:'regua_pura', x:50, y:45, tamanho:690, cor:'#ffffff', sensor:'demo', rStart:140, rCurv:260, rStyle:0, rFont:'Orbitron', rFontSz:16, rTickLen:25, rThick:3, rDens:5, rLabelOffset:20, rLabelSide:'outer', rTickSide:'inner', opacity:1 },
@@ -100,19 +99,19 @@ const CFG_DEF = {
           { id:'w5', tipo:'numero_puro', x:50, y:45, tamanho:140, cor:'#ffffff', sensor:'demo', rotation:0, fontFamily:'Orbitron', unidade:'KM/H', opacity:1, maxValor:100, minValor:0 }
         ] 
       },
-      { bg:{img:'',size:'cover'}, widgets:[] },
-      { bg:{img:'',size:'cover'}, widgets:[] }
+      { bg:{img:'',size:'cover',opacity:1,x:0,y:0}, widgets:[] },
+      { bg:{img:'',size:'cover',opacity:1,x:0,y:0}, widgets:[] }
     ],
     landscape: [
       { 
-        bg:{img:'',size:'cover'}, 
+        bg:{img:'',size:'cover',opacity:1,x:0,y:0}, 
         widgets:[
           { id:'wl1', tipo:'arco_puro', x:50, y:50, tamanho:350, cor:'#00f2ff', thickness:20, sensor:'demo', rotation:0, angIni:140, angSweep:260, lineCap:'round', opacity:1 },
           { id:'wl2', tipo:'numero_puro', x:50, y:50, tamanho:120, cor:'#ffffff', sensor:'demo', rotation:0, fontFamily:'Orbitron', unidade:'KM/H', opacity:1, maxValor:100, minValor:0 }
         ] 
       },
-      { bg:{img:'',size:'cover'}, widgets:[] },
-      { bg:{img:'',size:'cover'}, widgets:[] }
+      { bg:{img:'',size:'cover',opacity:1,x:0,y:0}, widgets:[] },
+      { bg:{img:'',size:'cover',opacity:1,x:0,y:0}, widgets:[] }
     ]
   }
 };
@@ -123,4 +122,33 @@ Object.keys(SENSORS_CONFIG).forEach(k => {
   ST.smooth[k] = 0;
 });
 
-export { ST, LOCAL_IMAGES, SENSORS_CONFIG, ICONES_SVG, TIPOS_INFO, CFG_DEF };
+const NEEDLES_CONFIG = {
+  // Categoria 1: Cor Variável
+  0:  { id: 0,  nome: '⭐ Neon Glow',          grp: 'Cor Variável' },
+  1:  { id: 1,  nome: '📍 Traço Fino',         grp: 'Cor Variável' },
+  2:  { id: 2,  nome: '🔺 Triângulo',          grp: 'Cor Variável' },
+  3:  { id: 3,  nome: '🖍️ Ponta Cor',          grp: 'Cor Variável' },
+  5:  { id: 5,  nome: '💫 Halo / Flutuante LFA',grp: 'Cor Variável' },
+  6:  { id: 6,  nome: '💀 Esqueleto GT3',      grp: 'Cor Variável' },
+  7:  { id: 7,  nome: '⚡ Lâmina Laser',       grp: 'Cor Variável' },
+
+  // Categoria 2: Cor Fixa
+  8:  { id: 8,  nome: '⚙️ Retrô Cromo (Fixo)', grp: 'Cor Fixa' },
+  13: { id: 13, nome: '🔴 Audi RS Red (Fixo)',  grp: 'Cor Fixa' },
+  14: { id: 14, nome: '🟠 Subaru STI (Fixo)',   grp: 'Cor Fixa' },
+  15: { id: 15, nome: '⚪ Mercedes-AMG (Fixo)', grp: 'Cor Fixa' },
+  20: { id: 20, nome: '🟡 Corvette Yellow (Fixo)',grp: 'Cor Fixa' },
+  25: { id: 25, nome: '🏁 Carbon Hex-Arrow (Fixo)',grp: 'Cor Fixa' },
+
+  // Categoria 3: Pontas
+  11: { id: 11, nome: '📐 Setinha Externa',     grp: 'Pontas' },
+  26: { id: 26, nome: '🌀 Double Ring Arrow',   grp: 'Pontas' },
+  27: { id: 27, nome: '🔘 Halo Dot',            grp: 'Pontas' },
+  28: { id: 28, nome: '🌊 Chevron Sweep',       grp: 'Pontas' },
+  29: { id: 29, nome: '🎯 Crosshair Radar',     grp: 'Pontas' },
+  30: { id: 30, nome: '🔦 Laser Dot Trail',     grp: 'Pontas' },
+  31: { id: 31, nome: '💎 Diamond Prism',       grp: 'Pontas' },
+  32: { id: 32, nome: '🛡️ Arc Bracket',         grp: 'Pontas' }
+};
+
+export { ST, LOCAL_IMAGES, SENSORS_CONFIG, ICONES_SVG, TIPOS_INFO, CFG_DEF, NEEDLES_CONFIG };

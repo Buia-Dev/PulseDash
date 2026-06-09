@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PulseDash - Catálogo de Ponteiros Aprovados</title>
+  
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Rajdhani:wght@500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  
+  <style>
+    :root {
+      --roxo: #9b00ff;
+      --roxo-c: #bd00ff;
+      --azul-c: #00f2ff;
+      --cyan: #00f2ff;
+      --laranja: #ff9900;
+      --fundo: #050508;
+      --card-bg: #0d0d12;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--fundo);
+      color: #fff;
+      font-family: 'Space Grotesk', sans-serif;
+      padding: 40px 20px;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: absolute;
+      top: -10%; left: -10%;
+      width: 50%; height: 50%;
+      background: radial-gradient(circle, rgba(155, 0, 255, 0.08) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: -1;
+    }
+
+    header {
+      text-align: center;
+      max-width: 800px;
+      margin: 0 auto 30px;
+    }
+
+    h1 {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 2rem;
+      letter-spacing: 4px;
+      background: linear-gradient(90deg, #fff 30%, var(--azul-c) 60%, var(--roxo-c) 90%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      text-shadow: 0 0 15px rgba(0, 242, 255, 0.3);
+      text-transform: uppercase;
+      margin-bottom: 15px;
+    }
+
+    header p {
+      color: #889;
+      font-size: 1.1rem;
+      line-height: 1.6;
+    }
+
+    /* Controls Panel */
+    .controls-container {
+      max-width: 900px;
+      margin: 0 auto 40px;
+      background: rgba(20, 20, 30, 0.6);
+      border: 1px solid rgba(155, 0, 255, 0.25);
+      padding: 25px;
+      border-radius: 12px;
+      box-shadow: 0 0 20px rgba(155, 0, 255, 0.2);
+      backdrop-filter: blur(10px);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .ctrl-group {
+      flex: 1;
+      min-width: 200px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .ctrl-label {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 10px;
+      letter-spacing: 2px;
+      color: var(--azul-c);
+      text-transform: uppercase;
+      font-weight: bold;
+    }
+
+    .ctrl-input-color {
+      width: 100%;
+      height: 45px;
+      background: #000;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      cursor: pointer;
+      padding: 5px;
+    }
+
+    .ctrl-slider {
+      width: 100%;
+      accent-color: var(--roxo-c);
+      cursor: pointer;
+      height: 8px;
+      border-radius: 4px;
+    }
+
+    /* Section Title */
+    .section-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 14px;
+      letter-spacing: 3px;
+      margin: 50px auto 25px;
+      max-width: 1200px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid rgba(255,255,255,0.05);
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: bold;
+    }
+    
+    .section-title.variavel {
+      border-color: var(--roxo-c);
+      color: var(--roxo-c);
+      text-shadow: 0 0 8px rgba(189, 0, 255, 0.3);
+    }
+    .section-title.fixo {
+      border-color: var(--laranja);
+      color: var(--laranja);
+      text-shadow: 0 0 8px rgba(255, 153, 0, 0.3);
+    }
+    .section-title.ponta {
+      border-color: var(--azul-c);
+      color: var(--azul-c);
+      text-shadow: 0 0 8px rgba(0, 242, 255, 0.3);
+    }
+
+    /* Grid */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 25px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    /* Card */
+    .card {
+      background: var(--card-bg);
+      border-radius: 12px;
+      padding: 20px;
+      border: 1px solid rgba(255,255,255,0.05);
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      transition: transform 0.3s, border-color 0.3s, box-shadow 0.3s;
+    }
+
+    .card:hover {
+      transform: translateY(-3px);
+    }
+    
+    /* Variavel Card Theme */
+    .card.variavel-card {
+      border-color: rgba(189, 0, 255, 0.15);
+    }
+    .card.variavel-card:hover {
+      border-color: var(--roxo-c);
+      box-shadow: 0 5px 20px rgba(189, 0, 255, 0.15);
+    }
+
+    /* Fixo Card Theme */
+    .card.fixo-card {
+      border-color: rgba(255, 153, 0, 0.15);
+    }
+    .card.fixo-card:hover {
+      border-color: var(--laranja);
+      box-shadow: 0 5px 20px rgba(255, 153, 0, 0.15);
+    }
+
+    /* Ponta Card Theme */
+    .card.ponta-card {
+      border-color: rgba(0, 242, 255, 0.15);
+    }
+    .card.ponta-card:hover {
+      border-color: var(--azul-c);
+      box-shadow: 0 5px 20px rgba(0, 242, 255, 0.15);
+    }
+    
+    .card.ponta-card.new-proposal {
+      border-color: rgba(0, 242, 255, 0.3);
+      background: linear-gradient(145deg, #0d0d12 0%, #08121a 100%);
+    }
+    .card.ponta-card.new-proposal:hover {
+      box-shadow: 0 5px 22px rgba(0, 242, 255, 0.25);
+    }
+
+    .font-info {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding-bottom: 10px;
+    }
+
+    .font-name {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .font-vibe {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      padding: 3px 6px;
+      border-radius: 4px;
+      font-weight: bold;
+    }
+    
+    .font-vibe.variavel-tag {
+      color: var(--roxo-c);
+      background: rgba(189, 0, 255, 0.1);
+    }
+
+    .font-vibe.fixo-tag {
+      color: var(--laranja);
+      background: rgba(255, 153, 0, 0.1);
+    }
+
+    .font-vibe.ponta-tag {
+      color: var(--azul-c);
+      background: rgba(0, 242, 255, 0.1);
+    }
+    
+    .font-vibe.new-tag {
+      color: #00ffaa;
+      background: rgba(0, 255, 170, 0.1);
+    }
+
+    /* Gauge Canvas Container */
+    .preview-box {
+      background: #000;
+      border-radius: 8px;
+      aspect-ratio: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px dashed rgba(255, 255, 255, 0.03);
+      position: relative;
+    }
+
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .desc {
+      font-size: 0.85rem;
+      color: #889;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>Painel de Ponteiros Salvos</h1>
+    <p>Visualização organizada dos <b>21 modelos de agulhas</b>. Use os controles de cor, rotação e tamanho para testar e ver as diferentes lógicas de redimensionamento de cada categoria!</p>
+  </header>
+
+  <div class="controls-container">
+    <div class="ctrl-group">
+      <label class="ctrl-label" for="color-picker">🎨 Cor do Ponteiro</label>
+      <input type="color" id="color-picker" class="ctrl-input-color" value="#00f2ff">
+    </div>
+    
+    <div class="ctrl-group">
+      <label class="ctrl-label" for="value-slider">⏱️ Rotação (Valor do Ponteiro)</label>
+      <input type="range" id="value-slider" class="ctrl-slider" min="0" max="100" value="40">
+    </div>
+    
+    <div class="ctrl-group">
+      <label class="ctrl-label" for="size-slider">📐 Tamanho do Ponteiro (Escala / Comprimento)</label>
+      <input type="range" id="size-slider" class="ctrl-slider" min="50" max="180" value="100">
+    </div>
+  </div>
+
+  <!-- CATEGORIA 1: PONTEIROS DE COR VARIÁVEL -->
+  <div class="section-title variavel">🌈 Ponteiros de Cor Variável</div>
+  <div class="grid">
+    
+    <!-- Tipo 0: Neon Glow -->
+    <div class="card variavel-card">
+      <div class="font-info">
+        <span class="font-name">Tipo 0 - Neon Glow</span>
+        <span class="font-vibe variavel-tag">Variável</span>
+      </div>
+      <div class="preview-box">
+        <canvas id="c-tipo-0" width="400" height="400"></canvas>
+      </div>
+      <p class="desc">Original com contorno neon iluminado de cor variável. O slider altera o <b>comprimento da haste</b>.</p>
+    </div>
+
+    <!-- Tipo 1: Traço Fino -->
+    <div class="card variavel-card">
+      <div class="font-info">
+        <span class="font-name">Tipo 1 - Traço Fino</span>
+        <span class="font-vibe variavel-tag">Variável</span>
+      </div>
+      <div class="preview-box">
+        <canvas id="c-tipo-1" width="400" height="400"></canvas>
+      </div>
+      <p class="desc">Reta minimalista de cor variável. O slider altera o <b>comprimento do traço</b>.</p>
+    </div>
+
+    <!-- Tipo 2: Triângulo -->
+    <div class="card variavel-card">
+      <div class="font-info">
+        <span class="font-name">Tipo 2 - Triângulo</span>
+        <span class="font-vibe variavel-tag">Variável</span>
+      </div>
+      <div class="preview-box">
+        <canvas id="c-tipo-2" width="400" height="400"></canvas>
+      </div>
+      <p class="desc">Agulha em formato de triângulo esportivo clássico. O slider altera o <b>comprimento do triângulo</b>.</p>
+    </div>
+
+    <!-- Tipo 3: Ponta Cor -->
+    <div class="card variavel-card">
+      <div class="font-info">
+        <span class="font-name">Tipo 3 - Ponta Cor</span>
+        <span class="font-vibe variavel-tag">Variável</span>
+      </div>
+      <div class="preview-box">
+        <canvas id="c-tipo-3" width="400" height="400"></canvas>
+      </div>
+      <p class="desc">Haste cinza com ponta colorida acesa. O slider altera o <b>comprimento da haste escura</b>.</p>
+    </div>
+
+    <!-- Tipo 5: Halo / Flutuante -->
+    <div class="card variavel-card">
+      <div class="font-info">
+        <span class="font-name">Tipo 5 - Halo / Flutuante</span>
+        <span class="font-vibe variavel-tag">Variável</span>
+      </div>
+      <div class="preview-box">
+        <canvas id="c-tipo-5" width="400" height="400"></canvas>
+      </div>
+      <p class="desc">Estilo <i>Lexus LFA</i>. O slider altera o <b>comprimento da haste flutuante</b>.</p>
+    </div>
+
+    <!-- Tipo 6: Esqueleto GT3 -->
+    <div class="card variavel-card">
+      <div class="font-info">
+        <span class="font-name">Tipo 6 - Esqueleto GT3</span>
+        <span class="font-vibe variavel-tag">Variável</span>
+      </div>
+      <div class="preview-box">
+        <canvas id="c-tipo-6" width="400" height="400"></canvas>
+      </div>
+      <p class="desc">Esqueleto vazado com ponta neon acesa. O slider altera o <b>comprimento do esqueleto</b>.</p>
+    </div>
+
+    <!-- Tipo 7: Lâmina Laser -->
+    <div class="card variavel-card">
+      <div class="font-info">
+        <span class="font-name">Tipo 7 - Lâmina Laser</span>
+        <span class="font-vibe variavel-tag">Variável</span>
+      </div>
+      <div class="preview-box">
+        <canvas id="c-tipo-7" width="400" height="400"></canvas>
+      </div>
+      <p class="desc">Lâmina com glow <i>Audi Cockpit</i> de cor variável. O slider altera o <b>comprimento da lâmina</b>.</p>
+    </div>
+
+  </div>
+
+  <!-- CATEGORIA 2: PONTEIROS DE COR FIXA -->
+  <div class="section-title fixo">🏎️ Ponteiros de Cor Fixa</div>
+  <div class="grid">
+    
+    <!-- Tipo 8: Retrô Cromo -->
+    <div class="card fixo-card">
+      <div class="font-info">
+        <span class="font-name">Tipo 8 - Retrô Cromo</span>
+        <span class="font-vibe fixo-tag">Fixo</span>
+      </div>
+      <div class="preview-box">
+        <canvas id="c-tipo-8" width="400" height="400"></canvas>
+      </div>
+      <p class="desc">Haste escura com ponta laranja fixa e miolo 3D. O slider altera o <b>comprimento da haste</b>.</p>
+    </div>
+
+    <!-- Tipo 13: Audi RS Red -->
+    <div class="card fixo-card">
+      <div class="font-info">
+        <span class="font-name">Tipo 13 - Audi RS Red</span>
+        <span class="font-vibe fixo-tag">Fixo</span>
+      </div>
+      <div class="preview-box">
+        <canvas id="c-tipo-13" width="400" height="400"></canvas>
+      </div>
+      <p class="desc">Vermelho clássico com reflexo (estilo <i>Audi S/RS</i>). O slider altera o <b>comprimento do ponteiro</b>.</p>
+    </div>
+
+    <!-- Tipo 14: Subaru STI Orange -->
+    <div class="card fixo-card">
+      <div class="font-info">
+        <span class="font-name">Tipo 14 - Subaru STI Orange</span>
+        <span class="font-vibe fixo-tag">Fixo</span>
+      </div>
+      <div class="preview-box">
+        <canvas id="c-tipo-14" width="400" height="400"></canvas>
+      </div>
+      <p class="desc">Agulha âmbar/laranja e miolo STI rosa. O slider altera o <b>comprimento do ponteiro</b>.</p>
+    </div>
+
+    <!-- Tipo 15: Mercedes-AMG White -->
+    <div class="card fixo-card">
+      <div class="font-info">
+        <span class="font-name">Tipo 15 - Mercedes-AMG White</span>
+        <span class="font-vibe fixo-tag">Fixo</span>
+      </div>
+      <div class="preview-box">
+        <canvas id="c-tipo-15" width="400" height="400"></canvas>
+      </div>
+      <p class="desc">Branco com miolo circular cromo 3D (estilo <i>AMG</i>). O slider altera o <b>comprimento do ponteiro</b>.</p>
+    </div>
+
+    <!-- Tipo 20: Corvette Yellow -->
+    <div class="card fixo-card">
+      <div class="font-info">
+        <span class="font-name">Tipo 20 - Corvette Yellow</span>
+        <span class="font-vibe fixo-tag">Fixo</span>
+      </div>
+      <div class="preview-box">
+        <canvas id="c-tipo-20" width="400" height="400"></canvas>
+      </div>
+      <p class="desc">Amarelo com miolo estilo fibra de carbono. O slider altera o <b>comprimento do ponteiro</b>.</p>
+    </div>
+
+    <!-- Tipo 25: Carbon Hex-Arrow -->
+    <div class="card fixo-card">
+      <div class="font-info">
+        <span class="font-name">Tipo 25 - Carbon Hex-Arrow</span>
+        <span class="font-vibe fixo-tag">Fixo</span>
+      </div>
+      <div class="preview-box">
+        <canvas id="c-tipo-25" width="400" height="400"></canvas>
+      </div>
+      <p class="desc">Fibra de carbono com seta vermelha e miolo sextavado. O slider altera o <b>comprimento da haste</b>.</p>
+    </div>
+
+  </div>
+
+  <!-- CATEGORIA 3: PONTEIROS DE PONTA -->
+  <div class="section-title ponta">🎯 Ponteiros de Ponta</div>
+  <div class="grid">
+    
+    <!-- Tipo 11: Setinha Externa -->
+    <div class="card ponta-card">
+      <div class="font-info">
+        <span class="font-name">Tipo 11 - Setinha Externa</span>
+        <span class="font-vibe ponta-tag">Ponta</span>
+      </div>
+      <div class="preview-box">
+        <canvas id="c-tipo-11" width="400" height="400"></canvas>
+      </div>
+      <p class="desc">Setinha na borda externa. O slider altera a **escala (tamanho/espessura)** da própria seta, mantendo a órbita na borda.</p>
+    </div>
+
+    <!-- Tipo 26: Double Ring Arrow -->
+    <div class="card ponta-card">
+      <div class="font-info">
+        <span class="font-name">Tipo 26 - Double Ring Arrow</span>
+        <span class="font-vibe ponta-tag">Ponta</span>
+      </div>
+      <div class="preview-box">
+        <canvas id="c-tipo-26" width="400" height="400"></canvas>
+      </div>
+      <p class="desc">Seta com arcos de guia. O slider altera a **espessura dos anéis e o tamanho da seta**, mantendo a órbita.</p>
+    </div>
+
+    <!-- Tipo 27: Halo Dot -->
+    <div class="card ponta-card">
+      <div class="font-info">
+        <span class="font-name">Tipo 27 - Halo Dot</span>
+        <span class="font-vibe ponta-tag">Ponta</span>
+      </div>
+      <div class="preview-box">
+        <canvas id="c-tipo-27" width="400" height="400"></canvas>
+      </div>
+      <p class="desc">Anel translúcido com ponto brilhante. O slider altera o **diâmetro do halo e do ponto**, sem alterar a órbita.</p>
+    </div>
+
+    <!-- Tipo 28: Chevron Sweep -->
+    <div class="card ponta-card new-proposal">
+      <div class="font-info">
+        <span class="font-name">Tipo 28 - Chevron Sweep</span>
+        <span class="font-vibe ponta-tag new-tag">Ponta</span>
+      </div>
+      <div class="preview-box">
+        <canvas id="c-tipo-28" width="400" height="400"></canvas>
+      </div>
+      <p class="desc">Três chevrons em rastro rápido. O slider altera o **tamanho dos chevrons e o espaçamento proporcional** deles.</p>
+    </div>
+
+    <!-- Tipo 29: Crosshair Radar -->
+    <div class="card ponta-card new-proposal">
+      <div class="font-info">
+        <span class="font-name">Tipo 29 - Crosshair Radar</span>
+        <span class="font-vibe ponta-tag new-tag">Ponta</span>
+      </div>
+      <div class="preview-box">
+        <canvas id="c-tipo-29" width="400" height="400"></canvas>
+      </div>
+      <p class="desc">Mira com retículo. O slider altera o **tamanho do círculo da mira, das retículas e da espessura dos traços**.</p>
+    </div>
+
+    <!-- Tipo 30: Laser Dot Trail -->
+    <div class="card ponta-card new-proposal">
+      <div class="font-info">
+        <span class="font-name">Tipo 30 - Laser Dot Trail</span>
+        <span class="font-vibe ponta-tag new-tag">Ponta</span>
+      </div>
+      <div class="preview-box">
+        <canvas id="c-tipo-30" width="400" height="400"></canvas>
+      </div>
+      <p class="desc">Pontos laser em gradiente de rastro. O slider altera o **diâmetro de todas as partículas e do brilho**.</p>
+    </div>
+
+    <!-- Tipo 31: Diamond Prism -->
+    <div class="card ponta-card new-proposal">
+      <div class="font-info">
+        <span class="font-name">Tipo 31 - Diamond Prism</span>
+        <span class="font-vibe ponta-tag new-tag">Ponta</span>
+      </div>
+      <div class="preview-box">
+        <canvas id="c-tipo-31" width="400" height="400"></canvas>
+      </div>
+      <p class="desc">Losango lapidado 3D. O slider altera a **largura e a altura do prisma de cristal**, mantendo-o na extremidade.</p>
+    </div>
+
+    <!-- Tipo 32: Arc Bracket -->
+    <div class="card ponta-card new-proposal">
+      <div class="font-info">
+        <span class="font-name">Tipo 32 - Arc Bracket</span>
+        <span class="font-vibe ponta-tag new-tag">Ponta</span>
+      </div>
+      <div class="preview-box">
+        <canvas id="c-tipo-32" width="400" height="400"></canvas>
+      </div>
+      <p class="desc">Colchete e seta apontadora. O slider altera a **espessura do colchete, abertura em graus e escala da seta**.</p>
+    </div>
+
+  </div>
+
+  <script>
+    const colorPicker = document.getElementById('color-picker');
+    const valueSlider = document.getElementById('value-slider');
+    const sizeSlider = document.getElementById('size-slider');
+    
+    // Mapeamento de todos os ponteiros atuais no catálogo
+    const canvasIds = [
+      'c-tipo-0', 'c-tipo-1', 'c-tipo-2', 'c-tipo-3',
+      'c-tipo-5', 'c-tipo-6', 'c-tipo-7',
+      'c-tipo-8', 'c-tipo-13', 'c-tipo-14', 'c-tipo-15', 'c-tipo-20', 'c-tipo-25',
+      'c-tipo-11', 'c-tipo-26', 'c-tipo-27',
+      'c-tipo-28', 'c-tipo-29', 'c-tipo-30', 'c-tipo-31', 'c-tipo-32'
+    ];
+    
+    const canvases = canvasIds.map(id => ({ el: document.getElementById(id), id }));
+
+    function drawDialBackground(ctx, w, h) {
+      const cx = w / 2;
+      const cy = h / 2;
+      const r = Math.min(w, h) * 0.44;
+
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r + 5, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+      ctx.font = '10px Orbitron, sans-serif';
+      ctx.fillStyle = '#666';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      const startAngle = 135 * Math.PI / 180;
+      const sweepAngle = 270 * Math.PI / 180;
+
+      for (let i = 0; i <= 10; i++) {
+        const p = i / 10;
+        const ang = startAngle + p * sweepAngle;
+        
+        const x1 = cx + Math.cos(ang) * r;
+        const y1 = cy + Math.sin(ang) * r;
+        const x2 = cx + Math.cos(ang) * (r - (i % 2 === 0 ? 12 : 7));
+        const y2 = cy + Math.sin(ang) * (r - (i % 2 === 0 ? 12 : 7));
+
+        ctx.lineWidth = i % 2 === 0 ? 2 : 1;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+
+        if (i % 2 === 0) {
+          const numX = cx + Math.cos(ang) * (r - 24);
+          const numY = cy + Math.sin(ang) * (r - 24);
+          ctx.fillText(i * 10, numX, numY);
+        }
+      }
+      ctx.restore();
+    }
+
+    function drawNeedlePreview(ctx, typeName, angle, r, cx, cy, color, sizeFactor) {
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(angle);
+
+      const cor = color;
+      
+      if (typeName === 'c-tipo-0') {
+        // TIPO 0: Neon Glow
+        const len = r * sizeFactor;
+        ctx.strokeStyle = '#000'; ctx.lineWidth = 6; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(-r*0.22, 0); ctx.lineTo(len*0.97, 0); ctx.stroke();
+        ctx.strokeStyle = cor; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(-r*0.2, 0); ctx.lineTo(len*0.95, 0); ctx.stroke();
+        ctx.beginPath(); ctx.arc(0,0,12,0,Math.PI*2); ctx.fillStyle='#000'; ctx.fill();
+        ctx.beginPath(); ctx.arc(0,0,9,0,Math.PI*2); ctx.fillStyle=cor; ctx.fill();
+        ctx.beginPath(); ctx.arc(0,0,12,0,Math.PI*2); ctx.strokeStyle=cor; ctx.lineWidth=1.5; ctx.stroke();
+      }
+      else if (typeName === 'c-tipo-1') {
+        // TIPO 1: Traço Fino
+        const len = r * sizeFactor;
+        ctx.beginPath(); ctx.moveTo(-r*0.1, 0); ctx.lineTo(len*0.95, 0); ctx.strokeStyle = cor; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.stroke();
+        ctx.beginPath(); ctx.arc(0,0,6,0,Math.PI*2); ctx.fillStyle=cor; ctx.fill();
+      }
+      else if (typeName === 'c-tipo-2') {
+        // TIPO 2: Triângulo
+        const len = r * sizeFactor;
+        ctx.beginPath(); ctx.moveTo(0, 6); ctx.lineTo(len*0.95, 0); ctx.lineTo(0, -6); ctx.fillStyle = cor; ctx.fill();
+        ctx.beginPath(); ctx.arc(0,0,9,0,Math.PI*2); ctx.fillStyle='#000'; ctx.fill();
+        ctx.beginPath(); ctx.arc(0,0,9,0,Math.PI*2); ctx.strokeStyle=cor; ctx.lineWidth=1.5; ctx.stroke();
+      }
+      else if (typeName === 'c-tipo-3') {
+        // TIPO 3: Ponta Cor
+        const len = r * sizeFactor;
+        ctx.beginPath(); ctx.moveTo(0, 5); ctx.lineTo(len*0.88, 0); ctx.lineTo(0, -5); ctx.fillStyle = '#222'; ctx.fill();
+        ctx.beginPath(); ctx.moveTo(len*.82, 3.5); ctx.lineTo(len*.95, 0); ctx.lineTo(len*.82, -3.5); ctx.fillStyle = cor; ctx.fill();
+        ctx.beginPath(); ctx.arc(0,0,8,0,Math.PI*2); ctx.fillStyle='#111'; ctx.fill();
+        ctx.beginPath(); ctx.arc(0,0,8,0,Math.PI*2); ctx.strokeStyle=cor; ctx.lineWidth=1.5; ctx.stroke();
+      }
+      else if (typeName === 'c-tipo-5') {
+        // TIPO 5: Flutuante LFA
+        const len = r * sizeFactor;
+        ctx.strokeStyle = '#000'; ctx.lineWidth = 7; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(r*0.48, 0); ctx.lineTo(len*0.95, 0); ctx.stroke();
+        ctx.strokeStyle = cor; ctx.lineWidth = 4; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(r*0.5, 0); ctx.lineTo(len*0.93, 0); ctx.stroke();
+        ctx.beginPath(); ctx.arc(0,0,r*0.15,0,Math.PI*2); ctx.strokeStyle='rgba(255,255,255,0.06)'; ctx.lineWidth=1.5; ctx.stroke();
+      }
+      else if (typeName === 'c-tipo-6') {
+        // TIPO 6: Esqueleto GT3
+        const len = r * sizeFactor;
+        ctx.strokeStyle = cor; ctx.lineWidth = 1.8; ctx.fillStyle = cor;
+        ctx.beginPath(); ctx.moveTo(0, 5); ctx.lineTo(len*0.8, 1); ctx.lineTo(len*0.8, -1); ctx.lineTo(0, -5); ctx.closePath(); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(len*0.8, 2); ctx.lineTo(len*0.96, 0); ctx.lineTo(len*0.8, -2); ctx.fill();
+        ctx.beginPath(); ctx.arc(0,0,9,0,Math.PI*2); ctx.fillStyle='#000'; ctx.fill();
+        ctx.beginPath(); ctx.arc(0,0,7,0,Math.PI*2); ctx.strokeStyle=cor; ctx.lineWidth=1.5; ctx.stroke();
+      }
+      else if (typeName === 'c-tipo-7') {
+        // TIPO 7: Lâmina Laser
+        const len = r * sizeFactor;
+        const grad = ctx.createLinearGradient(0, 0, len*0.95, 0);
+        grad.addColorStop(0, 'rgba(0,0,0,0)');
+        grad.addColorStop(0.3, cor);
+        grad.addColorStop(1, cor);
+        ctx.fillStyle = grad;
+        ctx.beginPath(); ctx.moveTo(0, 4); ctx.lineTo(len*0.95, 0.5); ctx.lineTo(len*0.95, -0.5); ctx.lineTo(0, -4); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(len*0.4, 0); ctx.lineTo(len*0.94, 0); ctx.stroke();
+      }
+      else if (typeName === 'c-tipo-8') {
+        // TIPO 8: Retrô Cromo
+        const len = r * sizeFactor;
+        ctx.strokeStyle = '#151515'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(len*0.75, 0); ctx.stroke();
+        ctx.strokeStyle = '#ff4500'; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(len*0.73, 0); ctx.lineTo(len*0.95, 0); ctx.stroke();
+        
+        const radGrad = ctx.createRadialGradient(-3, -3, 2, 0, 0, 18);
+        radGrad.addColorStop(0, '#ffffff');
+        radGrad.addColorStop(0.2, '#cccccc');
+        radGrad.addColorStop(0.6, '#333333');
+        radGrad.addColorStop(0.9, '#888888');
+        radGrad.addColorStop(1, '#111111');
+        ctx.beginPath(); ctx.arc(0,0,18,0,Math.PI*2); ctx.fillStyle=radGrad; ctx.fill();
+        ctx.beginPath(); ctx.arc(0,0,18,0,Math.PI*2); ctx.strokeStyle='#000'; ctx.lineWidth=1; ctx.stroke();
+      }
+      else if (typeName === 'c-tipo-11') {
+        // TIPO 11: Setinha Externa
+        const arrowLen = 13 * sizeFactor;
+        const arrowWidth = 4 * sizeFactor;
+        ctx.fillStyle = cor;
+        ctx.beginPath();
+        ctx.moveTo(r * 0.95, 0);
+        ctx.lineTo(r * 0.95 - arrowLen, arrowWidth);
+        ctx.lineTo(r * 0.95 - arrowLen, -arrowWidth);
+        ctx.closePath();
+        ctx.fill();
+      }
+      else if (typeName === 'c-tipo-13') {
+        // TIPO 13: Audi RS Red (Fixo)
+        const len = r * sizeFactor;
+        ctx.strokeStyle = '#ff003c'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(-r*0.15, 0); ctx.lineTo(len*0.95, 0); ctx.stroke();
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(len*0.88, 0); ctx.stroke();
+        
+        ctx.beginPath(); ctx.arc(0,0,15,0,Math.PI*2); ctx.fillStyle='#111'; ctx.fill();
+        ctx.beginPath(); ctx.arc(0,0,15,0,Math.PI*2); ctx.strokeStyle='#ff003c'; ctx.lineWidth=1.5; ctx.stroke();
+        ctx.beginPath(); ctx.arc(0,0,5,0,Math.PI*2); ctx.fillStyle='#444'; ctx.fill();
+      }
+      else if (typeName === 'c-tipo-14') {
+        // TIPO 14: Subaru STI Orange (Fixo)
+        const len = r * sizeFactor;
+        ctx.strokeStyle = '#ff6200'; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(-r*0.2, 0); ctx.lineTo(len*0.96, 0); ctx.stroke();
+        
+        ctx.beginPath(); ctx.arc(0,0,14,0,Math.PI*2); ctx.fillStyle='#111'; ctx.fill();
+        ctx.beginPath(); ctx.arc(0,0,9,0,Math.PI*2); ctx.strokeStyle='#ff0066'; ctx.lineWidth=2; ctx.stroke();
+      }
+      else if (typeName === 'c-tipo-15') {
+        // TIPO 15: Mercedes-AMG White (Fixo)
+        const len = r * sizeFactor;
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3.2;
+        ctx.beginPath(); ctx.moveTo(-r*0.1, 0); ctx.lineTo(len*0.95, 0); ctx.stroke();
+        
+        const radGrad = ctx.createRadialGradient(-2, -2, 1, 0, 0, 16);
+        radGrad.addColorStop(0, '#ffffff');
+        radGrad.addColorStop(0.3, '#dddddd');
+        radGrad.addColorStop(0.8, '#555555');
+        radGrad.addColorStop(1, '#222222');
+        ctx.beginPath(); ctx.arc(0,0,15,0,Math.PI*2); ctx.fillStyle=radGrad; ctx.fill();
+        ctx.beginPath(); ctx.arc(0,0,15,0,Math.PI*2); ctx.strokeStyle='#777'; ctx.lineWidth=1.2; ctx.stroke();
+      }
+      else if (typeName === 'c-tipo-20') {
+        // TIPO 20: Corvette Yellow (Fixo)
+        const len = r * sizeFactor;
+        ctx.strokeStyle = '#ffcc00'; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(-r*0.18, 0); ctx.lineTo(len*0.95, 0); ctx.stroke();
+        ctx.beginPath(); ctx.arc(0,0,13,0,Math.PI*2); ctx.fillStyle='#1c1c1c'; ctx.fill();
+        ctx.beginPath(); ctx.arc(0,0,13,0,Math.PI*2); ctx.strokeStyle='#333'; ctx.lineWidth=1.5; ctx.stroke();
+        ctx.beginPath(); ctx.arc(0,0,4,0,Math.PI*2); ctx.fillStyle='#aaa'; ctx.fill();
+      }
+      else if (typeName === 'c-tipo-25') {
+        // TIPO 25: Carbon Hex-Arrow (Fixo)
+        const len = r * sizeFactor;
+        ctx.strokeStyle = '#222'; ctx.lineWidth = 5;
+        ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(len*0.8, 0); ctx.stroke();
+        ctx.strokeStyle = '#444'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(len*0.75, 0); ctx.stroke();
+        ctx.fillStyle = '#ff0000';
+        ctx.beginPath(); ctx.moveTo(len*0.78, 5); ctx.lineTo(len*0.96, 0); ctx.lineTo(len*0.78, -5); ctx.lineTo(len*0.82, 0); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(len*0.78, 5); ctx.lineTo(len*0.96, 0); ctx.lineTo(len*0.78, -5); ctx.lineTo(len*0.82, 0); ctx.closePath(); ctx.stroke();
+        ctx.save();
+        ctx.fillStyle = '#0f0f15'; ctx.strokeStyle = '#ff0000'; ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        for (let i = 0; i < 6; i++) {
+          const angle = (i * Math.PI) / 3;
+          const x = Math.cos(angle) * 12;
+          const y = Math.sin(angle) * 12;
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.restore();
+      }
+      else if (typeName === 'c-tipo-26') {
+        // TIPO 26: Double Ring Arrow
+        const arrowLen = 16 * sizeFactor;
+        const arrowWidth = 6 * sizeFactor;
+        
+        ctx.strokeStyle = cor; ctx.lineWidth = 1.5 * sizeFactor;
+        ctx.beginPath(); ctx.arc(0, 0, r*0.9, -0.06 * sizeFactor, 0.06 * sizeFactor); ctx.stroke();
+        ctx.beginPath(); ctx.arc(0, 0, r*0.82, -0.06 * sizeFactor, 0.06 * sizeFactor); ctx.stroke();
+        
+        ctx.fillStyle = cor;
+        ctx.beginPath();
+        ctx.moveTo(r * 0.94, 0);
+        ctx.lineTo(r * 0.94 - arrowLen, arrowWidth);
+        ctx.lineTo(r * 0.94 - arrowLen + (4 * sizeFactor), 0);
+        ctx.lineTo(r * 0.94 - arrowLen, -arrowWidth);
+        ctx.closePath();
+        ctx.fill();
+      }
+      else if (typeName === 'c-tipo-27') {
+        // TIPO 27: Halo Dot
+        const dotRadius = 3 * sizeFactor;
+        const haloRadius = 8 * sizeFactor;
+        ctx.save();
+        ctx.strokeStyle = cor; ctx.lineWidth = 1.5 * sizeFactor;
+        ctx.beginPath(); ctx.arc(r*0.88, 0, haloRadius, 0, Math.PI*2); ctx.stroke();
+        ctx.fillStyle = cor; ctx.globalAlpha = 0.25;
+        ctx.beginPath(); ctx.arc(r*0.88, 0, haloRadius, 0, Math.PI*2); ctx.fill();
+        ctx.restore();
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.arc(r*0.88, 0, dotRadius, 0, Math.PI*2); ctx.fill();
+      }
+      else if (typeName === 'c-tipo-28') {
+        // TIPO 28: Chevron Sweep
+        ctx.fillStyle = cor;
+        const c1Len = 11 * sizeFactor;
+        const c1Width = 4.5 * sizeFactor;
+        ctx.beginPath();
+        ctx.moveTo(r * 0.95, 0);
+        ctx.lineTo(r * 0.95 - c1Len, c1Width);
+        ctx.lineTo(r * 0.95 - c1Len + (4 * sizeFactor), 0);
+        ctx.lineTo(r * 0.95 - c1Len, -c1Width);
+        ctx.closePath(); ctx.fill();
+        
+        const c2Len = 9 * sizeFactor;
+        const c2Width = 3.5 * sizeFactor;
+        ctx.save(); ctx.globalAlpha = 0.6;
+        ctx.beginPath();
+        ctx.moveTo(r * 0.86, 0);
+        ctx.lineTo(r * 0.86 - c2Len, c2Width);
+        ctx.lineTo(r * 0.86 - c2Len + (3 * sizeFactor), 0);
+        ctx.lineTo(r * 0.86 - c2Len, -c2Width);
+        ctx.closePath(); ctx.fill(); ctx.restore();
+        
+        const c3Len = 7 * sizeFactor;
+        const c3Width = 2.5 * sizeFactor;
+        ctx.save(); ctx.globalAlpha = 0.3;
+        ctx.beginPath();
+        ctx.moveTo(r * 0.79, 0);
+        ctx.lineTo(r * 0.79 - c3Len, c3Width);
+        ctx.lineTo(r * 0.79 - c3Len + (2 * sizeFactor), 0);
+        ctx.lineTo(r * 0.79 - c3Len, -c3Width);
+        ctx.closePath(); ctx.fill(); ctx.restore();
+      }
+      else if (typeName === 'c-tipo-29') {
+        // TIPO 29: Crosshair Radar
+        const crossRadius = 7 * sizeFactor;
+        const crossLineLen = 10 * sizeFactor;
+        ctx.strokeStyle = cor; ctx.lineWidth = 1.5 * sizeFactor;
+        ctx.beginPath(); ctx.arc(r * 0.88, 0, crossRadius, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(r * 0.88 - crossLineLen, 0); ctx.lineTo(r * 0.88 + crossLineLen, 0);
+        ctx.moveTo(r * 0.88, -crossLineLen); ctx.lineTo(r * 0.88, crossLineLen);
+        ctx.stroke();
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.arc(r * 0.88, 0, 2 * sizeFactor, 0, Math.PI * 2); ctx.fill();
+      }
+      else if (typeName === 'c-tipo-30') {
+        // TIPO 30: Laser Dot Trail
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.arc(r * 0.92, 0, 4 * sizeFactor, 0, Math.PI * 2); ctx.fill();
+        ctx.save(); ctx.fillStyle = cor; ctx.globalAlpha = 0.4;
+        ctx.beginPath(); ctx.arc(r * 0.92, 0, 9 * sizeFactor, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+        ctx.save(); ctx.fillStyle = cor; ctx.globalAlpha = 0.6;
+        ctx.beginPath(); ctx.arc(r * 0.84, 0, 3 * sizeFactor, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+        ctx.save(); ctx.fillStyle = cor; ctx.globalAlpha = 0.3;
+        ctx.beginPath(); ctx.arc(r * 0.77, 0, 2 * sizeFactor, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+      }
+      else if (typeName === 'c-tipo-31') {
+        // TIPO 31: Diamond Prism
+        const prismLen = 17 * sizeFactor;
+        const prismWidth = 4 * sizeFactor;
+        ctx.fillStyle = cor;
+        ctx.beginPath();
+        ctx.moveTo(r * 0.95, 0);
+        ctx.lineTo(r * 0.95 - prismLen / 2, prismWidth);
+        ctx.lineTo(r * 0.95 - prismLen, 0);
+        ctx.closePath(); ctx.fill();
+        ctx.save(); ctx.fillStyle = cor; ctx.globalAlpha = 0.5;
+        ctx.beginPath();
+        ctx.moveTo(r * 0.95, 0);
+        ctx.lineTo(r * 0.95 - prismLen / 2, -prismWidth);
+        ctx.lineTo(r * 0.95 - prismLen, 0);
+        ctx.closePath(); ctx.fill(); ctx.restore();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 0.8 * sizeFactor;
+        ctx.beginPath();
+        ctx.moveTo(r * 0.95, 0);
+        ctx.lineTo(r * 0.95 - prismLen / 2, prismWidth);
+        ctx.lineTo(r * 0.95 - prismLen, 0);
+        ctx.lineTo(r * 0.95 - prismLen / 2, -prismWidth);
+        ctx.closePath(); ctx.stroke();
+      }
+      else if (typeName === 'c-tipo-32') {
+        // TIPO 32: Arc Bracket
+        const bracketRadius = r * 0.94;
+        const bracketWidth = 2 * sizeFactor;
+        const bracketSpan = 0.06 * sizeFactor;
+        ctx.strokeStyle = cor; ctx.lineWidth = bracketWidth;
+        ctx.beginPath();
+        ctx.arc(0, 0, bracketRadius, -bracketSpan, bracketSpan);
+        ctx.stroke();
+        
+        const aStart = -bracketSpan, aEnd = bracketSpan;
+        const x1 = Math.cos(aStart) * bracketRadius, y1 = Math.sin(aStart) * bracketRadius;
+        const x2 = Math.cos(aEnd) * bracketRadius, y2 = Math.sin(aEnd) * bracketRadius;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1); ctx.lineTo(Math.cos(aStart) * (bracketRadius - 6 * sizeFactor), Math.sin(aStart) * (bracketRadius - 6 * sizeFactor));
+        ctx.moveTo(x2, y2); ctx.lineTo(Math.cos(aEnd) * (bracketRadius - 6 * sizeFactor), Math.sin(aEnd) * (bracketRadius - 6 * sizeFactor));
+        ctx.stroke();
+        
+        ctx.fillStyle = cor;
+        ctx.beginPath();
+        ctx.moveTo(bracketRadius - 2 * sizeFactor, 0);
+        ctx.lineTo(bracketRadius - 8 * sizeFactor, 3 * sizeFactor);
+        ctx.lineTo(bracketRadius - 8 * sizeFactor, -3 * sizeFactor);
+        ctx.closePath(); ctx.fill();
+      }
+
+      ctx.restore();
+    }
+
+    function updateAllGauges() {
+      const pVal = parseFloat(valueSlider.value);
+      const color = colorPicker.value;
+      const sizeFactor = parseFloat(sizeSlider.value) / 100;
+
+      const startAngle = 135 * Math.PI / 180;
+      const sweepAngle = 270 * Math.PI / 180;
+      const angle = startAngle + (pVal / 100) * sweepAngle;
+
+      canvases.forEach(c => {
+        if (!c.el) return;
+        const ctx = c.el.getContext('2d');
+        const w = c.el.width;
+        const h = c.el.height;
+        
+        ctx.clearRect(0, 0, w, h);
+        drawDialBackground(ctx, w, h);
+        
+        const r = Math.min(w, h) * 0.44;
+        drawNeedlePreview(ctx, c.id, angle, r, w/2, h/2, color, sizeFactor);
+      });
+    }
+
+    colorPicker.addEventListener('input', updateAllGauges);
+    valueSlider.addEventListener('input', updateAllGauges);
+    sizeSlider.addEventListener('input', updateAllGauges);
+
+    // Render Inicial
+    updateAllGauges();
+  </script>
+
+</body>
+</html>

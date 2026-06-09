@@ -1,0 +1,1410 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PulseDash - Dashboard Arcos & Barras Especiais</title>
+  
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@500;700&family=Space+Grotesk:wght@400;500;700&family=Oxanium:wght@400;700&display=swap" rel="stylesheet">
+  
+  <style>
+    :root {
+      --roxo: #9b00ff;
+      --roxo-c: #bd00ff;
+      --azul-c: #00f2ff;
+      --cyan: #00f2ff;
+      --laranja: #ff9900;
+      --rosa: #ff0055;
+      --verde: #00ff88;
+      --fundo: #06060a;
+      --card-bg: rgba(13, 13, 22, 0.65);
+      --glow: 0 0 25px rgba(0, 242, 255, 0.2);
+      --glass-border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--fundo);
+      color: #fff;
+      font-family: 'Space Grotesk', sans-serif;
+      padding: 40px 20px;
+      min-height: 100vh;
+      overflow-x: hidden;
+      background-image: 
+        radial-gradient(circle at 10% 20%, rgba(0, 242, 255, 0.04) 0%, transparent 40%),
+        radial-gradient(circle at 80% 80%, rgba(189, 0, 255, 0.04) 0%, transparent 45%);
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #09090e;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(0, 242, 255, 0.2);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(0, 242, 255, 0.4);
+    }
+
+    header {
+      text-align: center;
+      max-width: 900px;
+      margin: 0 auto 35px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 5px 12px;
+      background: rgba(0, 242, 255, 0.08);
+      border: 1px solid rgba(0, 242, 255, 0.2);
+      color: var(--azul-c);
+      font-family: 'Orbitron', sans-serif;
+      font-size: 11px;
+      font-weight: bold;
+      letter-spacing: 2px;
+      border-radius: 50px;
+      margin-bottom: 15px;
+      text-transform: uppercase;
+      box-shadow: 0 0 10px rgba(0, 242, 255, 0.1);
+    }
+
+    h1 {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 2.3rem;
+      font-weight: 900;
+      letter-spacing: 3px;
+      background: linear-gradient(90deg, #fff 10%, var(--azul-c) 50%, var(--roxo-c) 90%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      text-shadow: 0 0 20px rgba(0, 242, 255, 0.25);
+      text-transform: uppercase;
+      margin-bottom: 15px;
+    }
+
+    header p {
+      color: #99a;
+      font-size: 1.1rem;
+      line-height: 1.6;
+      max-width: 750px;
+      margin: 0 auto;
+    }
+
+    /* Controls Panel */
+    .controls-container {
+      max-width: 1200px;
+      margin: 0 auto 40px;
+      background: rgba(15, 15, 25, 0.7);
+      border: var(--glass-border);
+      border-top: 1px solid rgba(0, 242, 255, 0.3);
+      padding: 30px;
+      border-radius: 16px;
+      box-shadow: var(--glow);
+      backdrop-filter: blur(15px);
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 25px;
+      align-items: center;
+    }
+
+    .ctrl-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .ctrl-label {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 11px;
+      letter-spacing: 1px;
+      color: #bbf;
+      text-transform: uppercase;
+      font-weight: bold;
+    }
+
+    .ctrl-input-color-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #0a0a0f;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+      padding: 5px 10px;
+    }
+
+    .ctrl-input-color {
+      width: 35px;
+      height: 35px;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+
+    .color-hex {
+      font-family: monospace;
+      font-size: 12px;
+      color: #889;
+    }
+
+    .ctrl-slider {
+      width: 100%;
+      accent-color: var(--azul-c);
+      cursor: pointer;
+      height: 6px;
+      border-radius: 3px;
+      background: #0a0a0f;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      outline: none;
+    }
+
+    .btn-demo {
+      background: linear-gradient(135deg, rgba(0, 242, 255, 0.1) 0%, rgba(155, 0, 255, 0.1) 100%);
+      border: 1px solid var(--azul-c);
+      color: #fff;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 12px;
+      font-weight: bold;
+      letter-spacing: 1.5px;
+      padding: 12px 20px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.3s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      height: 45px;
+      box-shadow: 0 0 15px rgba(0, 242, 255, 0.15);
+    }
+
+    .btn-demo:hover {
+      background: linear-gradient(135deg, rgba(0, 242, 255, 0.25) 0%, rgba(155, 0, 255, 0.25) 100%);
+      box-shadow: 0 0 25px rgba(0, 242, 255, 0.3);
+      transform: translateY(-1px);
+    }
+
+    .btn-demo.active {
+      background: linear-gradient(135deg, var(--azul-c) 0%, var(--roxo-c) 100%);
+      border-color: #fff;
+      color: #000;
+      text-shadow: none;
+      box-shadow: 0 0 30px rgba(0, 242, 255, 0.5);
+    }
+
+    /* Sections */
+    .section-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 16px;
+      letter-spacing: 3px;
+      margin: 50px auto 25px;
+      max-width: 1200px;
+      padding-bottom: 10px;
+      border-bottom: 2px solid rgba(255, 255, 255, 0.05);
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 900;
+    }
+    
+    .section-title.arcs { border-color: var(--azul-c); color: var(--azul-c); text-shadow: 0 0 10px rgba(0,242,255,0.25); }
+    .section-title.bars { border-color: var(--roxo-c); color: var(--roxo-c); text-shadow: 0 0 10px rgba(189,0,255,0.25); }
+    .section-title.cockpit { border-color: var(--verde); color: var(--verde); text-shadow: 0 0 10px rgba(0,255,136,0.25); }
+
+    /* Grid */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+      gap: 30px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    /* Card */
+    .card {
+      background: var(--card-bg);
+      border-radius: 16px;
+      padding: 25px;
+      border: var(--glass-border);
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      backdrop-filter: blur(10px);
+      transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: linear-gradient(135deg, rgba(255,255,255,0.01) 0%, transparent 100%);
+      pointer-events: none;
+    }
+
+    .card:hover {
+      transform: translateY(-5px);
+    }
+    
+    .card.arc-card { border-color: rgba(0, 242, 255, 0.1); }
+    .card.arc-card:hover { border-color: rgba(0, 242, 255, 0.4); box-shadow: 0 10px 30px rgba(0, 242, 255, 0.15); }
+
+    .card.bar-card { border-color: rgba(189, 0, 255, 0.1); }
+    .card.bar-card:hover { border-color: rgba(189, 0, 255, 0.4); box-shadow: 0 10px 30px rgba(189, 0, 255, 0.15); }
+
+    .font-info {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding-bottom: 12px;
+    }
+
+    .font-name {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #fff;
+      font-family: 'Orbitron', sans-serif;
+    }
+
+    .font-vibe {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-weight: bold;
+      font-family: 'Orbitron', sans-serif;
+    }
+    
+    .font-vibe.arc-tag { color: var(--azul-c); background: rgba(0, 242, 255, 0.08); border: 1px solid rgba(0, 242, 255, 0.2); }
+    .font-vibe.bar-tag { color: var(--roxo-c); background: rgba(189, 0, 255, 0.08); border: 1px solid rgba(189, 0, 255, 0.2); }
+
+    /* Canvas Box */
+    .preview-box {
+      background: #030305;
+      border-radius: 12px;
+      aspect-ratio: 1.25;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px dashed rgba(255, 255, 255, 0.04);
+      position: relative;
+      box-shadow: inset 0 0 15px rgba(0,0,0,0.6);
+    }
+
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .desc {
+      font-size: 0.9rem;
+      color: #99a;
+      line-height: 1.5;
+    }
+
+    /* Snippet Box */
+    .snippet-btn {
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #889;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 11px;
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      align-self: flex-start;
+      transition: all 0.2s;
+    }
+
+    .snippet-btn:hover {
+      color: #fff;
+      border-color: rgba(255, 255, 255, 0.3);
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .snippet-panel {
+      display: none;
+      background: #010103;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+      padding: 12px;
+      font-family: monospace;
+      font-size: 11px;
+      color: #3f9;
+      white-space: pre-wrap;
+      overflow-x: auto;
+      margin-top: 5px;
+      max-height: 150px;
+      line-height: 1.4;
+    }
+
+    /* Cockpit Mockup */
+    .cockpit-container {
+      max-width: 1200px;
+      margin: 0 auto 50px;
+      background: rgba(10, 10, 15, 0.85);
+      border: 1px solid rgba(0, 255, 136, 0.2);
+      border-top: 1px solid rgba(0, 255, 136, 0.4);
+      border-radius: 20px;
+      padding: 40px;
+      box-shadow: 0 15px 40px rgba(0, 255, 136, 0.05);
+      backdrop-filter: blur(15px);
+    }
+
+    .cockpit-title-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 30px;
+      border-bottom: 1px dashed rgba(0, 255, 136, 0.15);
+      padding-bottom: 15px;
+    }
+
+    .cockpit-title-row h3 {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1.3rem;
+      color: var(--verde);
+      font-weight: 900;
+      letter-spacing: 2px;
+    }
+
+    .cockpit-status {
+      font-family: monospace;
+      font-size: 11px;
+      color: rgba(0, 255, 136, 0.7);
+      background: rgba(0, 255, 136, 0.05);
+      border: 1px solid rgba(0, 255, 136, 0.2);
+      padding: 4px 10px;
+      border-radius: 4px;
+      animation: pulse 2s infinite;
+    }
+
+    .cockpit-grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 30px;
+    }
+
+    .cockpit-widget {
+      background: #020204;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.03);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    .w-speedo { grid-column: span 6; aspect-ratio: 1.4; }
+    .w-tach { grid-column: span 6; aspect-ratio: 1.4; }
+    .w-secondary { grid-column: span 4; aspect-ratio: 1.6; }
+
+    .cockpit-w-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 10px;
+      letter-spacing: 2px;
+      color: #889;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      font-weight: bold;
+    }
+
+    .cockpit-canvas {
+      width: 100%;
+      height: 100%;
+    }
+
+    @keyframes pulse {
+      0% { opacity: 0.6; }
+      50% { opacity: 1; }
+      100% { opacity: 0.6; }
+    }
+
+    @media (max-width: 900px) {
+      .cockpit-grid { display: flex; flex-direction: column; }
+      .w-speedo, .w-tach, .w-secondary { aspect-ratio: 1.3; }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <span class="badge">Pesquisa & Inspiração</span>
+    <h1>Estilos de Arcos & Barras</h1>
+    <p>Conceitos visuais de alta performance inspirados em telemétricas de pista, painéis de supercarros esportivos e cockpits de caça aeroespaciais. Simule abaixo como eles se comportam dinamicamente.</p>
+  </header>
+
+  <!-- CONTROLES GLOBAIS -->
+  <div class="controls-container">
+    <div class="ctrl-group">
+      <label class="ctrl-label">🎨 Cor Inicial (Baixo)</label>
+      <div class="ctrl-input-color-wrapper">
+        <input type="color" id="color-1" class="ctrl-input-color" value="#00f2ff">
+        <span class="color-hex" id="hex-1">#00f2ff</span>
+      </div>
+    </div>
+    
+    <div class="ctrl-group">
+      <label class="ctrl-label">🎨 Cor Média (Médio)</label>
+      <div class="ctrl-input-color-wrapper">
+        <input type="color" id="color-2" class="ctrl-input-color" value="#9b00ff">
+        <span class="color-hex" id="hex-2">#9b00ff</span>
+      </div>
+    </div>
+
+    <div class="ctrl-group">
+      <label class="ctrl-label">🎨 Cor Alerta (Pico)</label>
+      <div class="ctrl-input-color-wrapper">
+        <input type="color" id="color-3" class="ctrl-input-color" value="#ff0055">
+        <span class="color-hex" id="hex-3">#ff0055</span>
+      </div>
+    </div>
+    
+    <div class="ctrl-group">
+      <label class="ctrl-label">⏱️ Valor de Leitura (<span id="val-display">65</span>%)</label>
+      <input type="range" id="value-slider" class="ctrl-slider" min="0" max="100" value="65">
+    </div>
+
+    <div class="ctrl-group">
+      <label class="ctrl-label">⚙️ Espessura Geral (<span id="thk-display">12</span>px)</label>
+      <input type="range" id="thickness-slider" class="ctrl-slider" min="4" max="25" value="12">
+    </div>
+
+    <div class="ctrl-group">
+      <button class="btn-demo" id="btn-demo-mode">
+        <span>🔄 MODO DEMONSTRAÇÃO</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- SEÇÃO 1: ARCOS INOVADORES -->
+  <div class="section-title arcs">⭕ Conceitos de Arcos</div>
+  <div class="grid">
+    
+    <!-- Arco 1: Progressivo Crescente -->
+    <div class="card arc-card" onclick="showSnippet('tapered')">
+      <div class="font-info">
+        <span class="font-name">Progressivo Crescente</span>
+        <span class="font-vibe arc-tag">Tapered Sweep</span>
+      </div>
+      <div class="preview-box">
+        <canvas id="c-arc-tapered" width="400" height="320"></canvas>
+      </div>
+      <p class="desc">A espessura da linha cresce gradualmente do início ao fim do arco, transmitindo força física, aceleração e fluxo dinâmico.</p>
+      <button class="snippet-btn">Ver Lógica de Desenho</button>
+      <div class="snippet-panel" id="snip-tapered">```javascript
+// A espessura cresce a cada segmento percorrido
+for (let i = 0; i < activeSteps; i++) {
+  const stepP = i / totalSteps;
+  const currentAng = startAng + stepP * sweepAng;
+  const currentThickness = minThk + (maxThk - minThk) * stepP;
+  ctx.lineWidth = currentThickness;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, currentAng, currentAng + stepAng);
+  ctx.stroke();
+}```</div>
+    </div>
+
+    <!-- Arco 2: Gradiente Cônico -->
+    <div class="card arc-card" onclick="showSnippet('conic')">
+      <div class="font-info">
+        <span class="font-name">Gradiente Cônico</span>
+        <span class="font-vibe arc-tag">Conic Real</span>
+      </div>
+      <div class="preview-box">
+        <canvas id="c-arc-conic" width="400" height="320"></canvas>
+      </div>
+      <p class="desc">Usa um gradiente angular real que segue perfeitamente a curvatura do trajeto circular, com cores fluidas que mudam com a rotação.</p>
+      <button class="snippet-btn">Ver Lógica de Desenho</button>
+      <div class="snippet-panel" id="snip-conic">```javascript
+// Gradiente angular HTML5 nativo
+const grad = ctx.createConicGradient(startAng, cx, cy);
+grad.addColorStop(0.0, corMin);
+grad.addColorStop(0.5, corMed);
+grad.addColorStop(1.0, corMax);
+ctx.strokeStyle = grad;
+ctx.beginPath();
+ctx.arc(cx, cy, r, startAng, startAng + sweepAng * progress);
+ctx.stroke();```</div>
+    </div>
+
+    <!-- Arco 3: Shift-Light Dot Matrix -->
+    <div class="card arc-card" onclick="showSnippet('dots')">
+      <div class="font-info">
+        <span class="font-name">Shift-Light Dot Matrix</span>
+        <span class="font-vibe arc-tag">LED Circular</span>
+      </div>
+      <div class="preview-box">
+        <canvas id="c-arc-dots" width="400" height="320"></canvas>
+      </div>
+      <p class="desc">Esferas retroiluminadas que acendem de forma sequencial baseada no valor, com diâmetro crescente nas faixas mais altas (estilo F1).</p>
+      <button class="snippet-btn">Ver Lógica de Desenho</button>
+      <div class="snippet-panel" id="snip-dots">```javascript
+// Desenha pontos discretos ao longo do arco
+for (let i = 0; i < totalDots; i++) {
+  const ang = startAng + (i / (totalDots - 1)) * sweepAng;
+  const x = cx + Math.cos(ang) * r;
+  const y = cy + Math.sin(ang) * r;
+  ctx.fillStyle = i < activeCount ? getCor(i) : 'rgba(255,255,255,0.05)';
+  ctx.beginPath();
+  ctx.arc(x, y, dotSize, 0, Math.PI * 2);
+  ctx.fill();
+}```</div>
+    </div>
+
+    <!-- Arco 4: Contorno de Precisão -->
+    <div class="card arc-card" onclick="showSnippet('nested')">
+      <div class="font-info">
+        <span class="font-name">Contorno de Precisão</span>
+        <span class="font-vibe arc-tag">Dual Layer</span>
+      </div>
+      <div class="preview-box">
+        <canvas id="c-arc-nested" width="400" height="320"></canvas>
+      </div>
+      <p class="desc">Uma trilha externa de blocos largos e intervalados emparelhada a uma linha fina interna contínua que indica a precisão.</p>
+      <button class="snippet-btn">Ver Lógica de Desenho</button>
+      <div class="snippet-panel" id="snip-nested">```javascript
+// Desenha arco fino interno de precisão
+ctx.lineWidth = 2;
+ctx.arc(cx, cy, r - 8, startA, startA + sweepA * progress);
+ctx.stroke();
+
+// Desenha blocos externos largos com intervalos
+for (let i = 0; i < blockCount; i++) {
+  ctx.arc(cx, cy, r, bStart, bStart + blockLen);
+  ctx.stroke();
+}```</div>
+    </div>
+
+    <!-- Arco 5: Segmentado Sci-Fi -->
+    <div class="card arc-card" onclick="showSnippet('dashed')">
+      <div class="font-info">
+        <span class="font-name">Segmentado Sci-Fi</span>
+        <span class="font-vibe arc-tag">Dashed Grid</span>
+      </div>
+      <div class="preview-box">
+        <canvas id="c-arc-dashed" width="400" height="320"></canvas>
+      </div>
+      <p class="desc">Arco composto de dezenas de marcações radiais (ticks) lineares e milimétricas, remetendo a mira tática ou scanner de radar militar.</p>
+      <button class="snippet-btn">Ver Lógica de Desenho</button>
+      <div class="snippet-panel" id="snip-dashed">```javascript
+// Gradiente cônico para transição suave de cores
+const grad = ctx.createConicGradient(startA, cx, cy);
+grad.addColorStop(0, color1);
+grad.addColorStop(0.5, color2);
+grad.addColorStop(1, color3);
+ctx.strokeStyle = grad;
+ctx.lineWidth = thickness;
+ctx.setLineDash([3, 5]); // Marcações milimétricas
+ctx.beginPath();
+ctx.arc(cx, cy, r, startA, startA + sweepA * progress);
+ctx.stroke();
+ctx.setLineDash([]);```</div>
+    </div>
+
+  </div>
+
+  <!-- SEÇÃO 2: BARRAS INOVADORAS -->
+  <div class="section-title bars">📊 Conceitos de Barras</div>
+  <div class="grid">
+    
+    <!-- Barra 1: Trapézios Inclinados -->
+    <div class="card bar-card" onclick="showSnippet('slanted')">
+      <div class="font-info">
+        <span class="font-name">Trapézios Inclinados</span>
+        <span class="font-vibe bar-tag">Racing Segment</span>
+      </div>
+      <div class="preview-box">
+        <canvas id="c-bar-slanted" width="400" height="320"></canvas>
+      </div>
+      <p class="desc">Segmentos de LED em formato quadrilátero inclinado paralelamente, remetendo aos displays digitais clássicos de arrancadas.</p>
+      <button class="snippet-btn">Ver Lógica de Desenho</button>
+      <div class="snippet-panel" id="snip-slanted">```javascript
+// Desenha quadriláteros com compensação de inclinação (slant)
+for (let i = 0; i < totalSegments; i++) {
+  const x = startX + i * (segW + spacing);
+  ctx.beginPath();
+  ctx.moveTo(x + slant, y);
+  ctx.lineTo(x + segW + slant, y);
+  ctx.lineTo(x + segW, y + h);
+  ctx.lineTo(x, y + h);
+  ctx.closePath();
+  ctx.fill();
+}```</div>
+    </div>
+
+    <!-- Barra 2: Chevron HUD Stack -->
+    <div class="card bar-card" onclick="showSnippet('chevrons')">
+      <div class="font-info">
+        <span class="font-name">Chevron HUD Stack</span>
+        <span class="font-vibe bar-tag">Mil-Spec HUD</span>
+      </div>
+      <div class="preview-box">
+        <canvas id="c-bar-chevrons" width="400" height="320"></canvas>
+      </div>
+      <p class="desc">Blocos em seta arqueados (V) que empilham verticalmente. Ficam progressivamente mais largos, simulando o HUD de miras táticas.</p>
+      <button class="snippet-btn">Ver Lógica de Desenho</button>
+      <div class="snippet-panel" id="snip-chevrons">```javascript
+// Traça caminhos angulares (V) empilhados
+for (let i = 0; i < totalChevrons; i++) {
+  const y = startY - i * (segH + spacing);
+  ctx.lineWidth = thickness * (1 + (i * 0.05));
+  ctx.beginPath();
+  ctx.moveTo(bx, y);
+  ctx.lineTo(bx + width / 2, y - 8);
+  ctx.lineTo(bx + width, y);
+  ctx.stroke();
+}```</div>
+    </div>
+
+    <!-- Barra 3: Barra Cursor Laser -->
+    <div class="card bar-card" onclick="showSnippet('laser-cursor')">
+      <div class="font-info">
+        <span class="font-name">Barra Cursor Laser</span>
+        <span class="font-vibe bar-tag">Laser Trail</span>
+      </div>
+      <div class="preview-box">
+        <canvas id="c-bar-laser-cursor" width="400" height="320"></canvas>
+      </div>
+      <p class="desc">Uma trilha minimalista ultra-fina contendo um ponto laser arredondado super brilhante e com forte glow na ponta atual da leitura.</p>
+      <button class="snippet-btn">Ver Lógica de Desenho</button>
+      <div class="snippet-panel" id="snip-laser-cursor">```javascript
+// Linha fina de fundo, e trilha ativa com gradiente suave
+ctx.fillRect(bx, by, fillW, barH); // Fina
+// Cursor circular na ponta atual da leitura
+ctx.shadowColor = color1;
+ctx.shadowBlur = 12;
+ctx.arc(cursorX, by + barH/2, thk * 0.7, 0, Math.PI * 2);
+ctx.fill();
+// Core interno branco brilhante
+ctx.fillStyle = '#ffffff';
+ctx.arc(cursorX, by + barH/2, thk * 0.35, 0, Math.PI * 2);
+ctx.fill();```</div>
+    </div>
+
+    <!-- Barra 4: Células de Fusão -->
+    <div class="card bar-card" onclick="showSnippet('fusion')">
+      <div class="font-info">
+        <span class="font-name">Células de Fusão</span>
+        <span class="font-vibe bar-tag">Fusion Cell</span>
+      </div>
+      <div class="preview-box">
+        <canvas id="c-bar-fusion" width="400" height="320"></canvas>
+      </div>
+      <p class="desc">Blocos em formato de pílulas ou cápsulas com contornos reflexivos de vidro e um núcleo central iluminado individualmente.</p>
+      <button class="snippet-btn">Ver Lógica de Desenho</button>
+      <div class="snippet-panel" id="snip-fusion">```javascript
+// Desenha borda externa arredondada de cada célula
+ctx.beginPath();
+ctx.roundRect(x, by, cellW, barH, 4);
+ctx.stroke();
+
+// Se ativa, preenche o núcleo interno e adiciona reflexo superior
+ctx.beginPath();
+ctx.roundRect(x + 2, by + 2, cellW - 4, barH - 4, 2);
+ctx.fill();
+ctx.fillRect(x + 3, by + 3, (cellW - 6) * 0.45, 1.5); // reflexo```</div>
+    </div>
+
+    <!-- Barra 5: Grade Hexagonal -->
+    <div class="card bar-card" onclick="showSnippet('hex')">
+      <div class="font-info">
+        <span class="font-name">Grade Hexagonal</span>
+        <span class="font-vibe bar-tag">Honey Energy</span>
+      </div>
+      <div class="preview-box">
+        <canvas id="c-bar-hex" width="400" height="320"></canvas>
+      </div>
+      <p class="desc">Sequência horizontal de favos de mel (hexágonos) geométricos que se acendem individualmente, dando uma assinatura estética cibernética.</p>
+      <button class="snippet-btn">Ver Lógica de Desenho</button>
+      <div class="snippet-panel" id="snip-hex">```javascript
+// Traça caminho poligonal de 6 vértices para cada segmento
+ctx.beginPath();
+for (let j = 0; j < 6; j++) {
+  const angle = (j * Math.PI) / 3;
+  const vx = hx + Math.cos(angle) * hexSize;
+  const vy = hy + Math.sin(angle) * hexSize;
+  if (j === 0) ctx.moveTo(vx, vy); else ctx.lineTo(vx, vy);
+}
+ctx.closePath();
+ctx.fill();```</div>
+    </div>
+
+  </div>
+
+  <!-- MOCK COCKPIT FUTURISTA -->
+  <div class="section-title cockpit">🎛️ Mockup Integrado: Painel Virtual Completo</div>
+  <div class="cockpit-container">
+    <div class="cockpit-title-row">
+      <h3>PULSEDASH FLIGHT DECK v8.0</h3>
+      <span class="cockpit-status">📡 OBD ACTIVE: TELEMETRIA ATIVA</span>
+    </div>
+    <div class="cockpit-grid">
+      <!-- RPM - Arco Cônico -->
+      <div class="cockpit-widget w-tach">
+        <span class="cockpit-w-title">Tachometer (RPM x 1000)</span>
+        <canvas id="cockpit-rpm" width="450" height="320"></canvas>
+      </div>
+      <!-- Velocímetro - Arco Progressivo Crescente -->
+      <div class="cockpit-widget w-speedo">
+        <span class="cockpit-w-title">Speedometer (KM/H)</span>
+        <canvas id="cockpit-speed" width="450" height="320"></canvas>
+      </div>
+      <!-- Nova Barra Cursor Laser -->
+      <div class="cockpit-widget w-secondary">
+        <span class="cockpit-w-title">Engine Temp (Laser Cursor)</span>
+        <canvas id="cockpit-temp" width="300" height="180"></canvas>
+      </div>
+      <!-- Células de Fusão -->
+      <div class="cockpit-widget w-secondary">
+        <span class="cockpit-w-title">Battery Cells (Fusion C.)</span>
+        <canvas id="cockpit-power" width="300" height="180"></canvas>
+      </div>
+      <!-- Turbo Boost - Chevron HUD -->
+      <div class="cockpit-widget w-secondary">
+        <span class="cockpit-w-title">Turbo Boost (BAR)</span>
+        <canvas id="cockpit-boost" width="300" height="180"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Inputs e sliders
+    const colorInput1 = document.getElementById('color-1');
+    const colorInput2 = document.getElementById('color-2');
+    const colorInput3 = document.getElementById('color-3');
+    const hex1 = document.getElementById('hex-1');
+    const hex2 = document.getElementById('hex-2');
+    const hex3 = document.getElementById('hex-3');
+    const valueSlider = document.getElementById('value-slider');
+    const thicknessSlider = document.getElementById('thickness-slider');
+    const valDisplay = document.getElementById('val-display');
+    const thkDisplay = document.getElementById('thk-display');
+    const btnDemo = document.getElementById('btn-demo-mode');
+
+    // Lista de ids
+    const canvasIds = [
+      'c-arc-tapered', 'c-arc-conic', 'c-arc-dots', 'c-arc-nested', 'c-arc-dashed',
+      'c-bar-slanted', 'c-bar-chevrons', 'c-bar-laser-cursor', 'c-bar-fusion', 'c-bar-hex'
+    ];
+
+    let isDemoActive = false;
+    let demoAngle = 0;
+
+    // Sincroniza labels de cores e slider
+    function syncInputs() {
+      hex1.textContent = colorInput1.value.toUpperCase();
+      hex2.textContent = colorInput2.value.toUpperCase();
+      hex3.textContent = colorInput3.value.toUpperCase();
+      valDisplay.textContent = valueSlider.value;
+      thkDisplay.textContent = thicknessSlider.value;
+    }
+
+    // Snippets toggles
+    function showSnippet(type) {
+      const panel = document.getElementById(`snip-${type}`);
+      if(panel) {
+        const isVisible = panel.style.display === 'block';
+        document.querySelectorAll('.snippet-panel').forEach(p => p.style.display = 'none');
+        panel.style.display = isVisible ? 'none' : 'block';
+      }
+    }
+
+    // Helper: Ticks radiais no fundo
+    function drawArcBackgroundTicks(ctx, cx, cy, r, startA, sweepA, spacing = 30) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+      ctx.lineWidth = 1.2;
+      for (let i = 0; i <= spacing; i++) {
+        const ang = startA + (i / spacing) * sweepA;
+        const x1 = cx + Math.cos(ang) * (r - 7);
+        const y1 = cy + Math.sin(ang) * (r - 7);
+        const x2 = cx + Math.cos(ang) * (r + 7);
+        const y2 = cy + Math.sin(ang) * (r + 7);
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // DRAW FUNCTIONS FOR INDIVIDUAL PREVIEWS
+    function drawArcTapered(ctx, w, h, p, color1, thk) {
+      const cx = w / 2; const cy = h / 2 + 10;
+      const r = Math.min(w, h) * 0.38;
+      const startA = 135 * Math.PI / 180;
+      const sweepA = 270 * Math.PI / 180;
+
+      drawArcBackgroundTicks(ctx, cx, cy, r, startA, sweepA);
+
+      // Fundo
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+      ctx.lineWidth = thk + 8;
+      ctx.beginPath(); ctx.arc(cx, cy, r, startA, startA + sweepA); ctx.stroke();
+      ctx.restore();
+
+      // Ativo crescente
+      const steps = 90;
+      const activeSteps = Math.round(steps * p);
+      ctx.save();
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = color1;
+      for (let i = 0; i < activeSteps; i++) {
+        const stepP = i / steps;
+        const ang = startA + stepP * sweepA;
+        const nextAng = startA + ((i + 1.4) / steps) * sweepA;
+        const thickness = 2 + (thk * 1.5 * stepP);
+        ctx.lineWidth = thickness;
+        ctx.beginPath(); ctx.arc(cx, cy, r, ang, nextAng); ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawArcConic(ctx, w, h, p, color1, color2, color3, thk) {
+      const cx = w / 2; const cy = h / 2 + 10;
+      const r = Math.min(w, h) * 0.38;
+      const startA = 135 * Math.PI / 180;
+      const sweepA = 270 * Math.PI / 180;
+
+      drawArcBackgroundTicks(ctx, cx, cy, r, startA, sweepA);
+
+      // Fundo
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,255,255,0.03)'; ctx.lineWidth = thk;
+      ctx.beginPath(); ctx.arc(cx, cy, r, startA, startA + sweepA); ctx.stroke();
+      ctx.restore();
+
+      // Ativo
+      ctx.save();
+      ctx.lineWidth = thk; ctx.lineCap = 'round';
+      const grad = ctx.createConicGradient(startA, cx, cy);
+      grad.addColorStop(0, color1);
+      grad.addColorStop(0.5, color2);
+      grad.addColorStop(1, color3);
+      ctx.strokeStyle = grad;
+      ctx.beginPath(); ctx.arc(cx, cy, r, startA, startA + sweepA * p); ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawArcDots(ctx, w, h, p, color1, color2, color3, thk) {
+      const cx = w / 2; const cy = h / 2 + 10;
+      const r = Math.min(w, h) * 0.38;
+      const startA = 135 * Math.PI / 180;
+      const sweepA = 270 * Math.PI / 180;
+
+      const totalDots = 24;
+      const activeCount = Math.round(totalDots * p);
+
+      for (let i = 0; i < totalDots; i++) {
+        const dotP = i / (totalDots - 1);
+        const ang = startA + dotP * sweepA;
+        const x = cx + Math.cos(ang) * r;
+        const y = cy + Math.sin(ang) * r;
+        const active = i < activeCount;
+
+        let col = color1;
+        if (dotP > 0.5) col = color2;
+        if (dotP > 0.8) col = color3;
+
+        ctx.save();
+        if (active) {
+          ctx.fillStyle = col;
+          ctx.shadowColor = col;
+          ctx.shadowBlur = 8;
+        } else {
+          ctx.fillStyle = 'rgba(255,255,255,0.06)';
+        }
+        ctx.beginPath();
+        // Crescem de tamanho ligeiramente no final
+        ctx.arc(x, y, (thk * 0.35) + (dotP * 3), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    function drawArcNested(ctx, w, h, p, color1, color2, thk) {
+      const cx = w / 2; const cy = h / 2 + 10;
+      const r = Math.min(w, h) * 0.38;
+      const startA = 135 * Math.PI / 180;
+      const sweepA = 270 * Math.PI / 180;
+
+      // 1. Linha fina interna
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(cx, cy, r - 10, startA, startA + sweepA); ctx.stroke();
+      
+      ctx.strokeStyle = color1; ctx.lineWidth = 2;
+      ctx.shadowColor = color1; ctx.shadowBlur = 4;
+      ctx.beginPath(); ctx.arc(cx, cy, r - 10, startA, startA + sweepA * p); ctx.stroke();
+      ctx.restore();
+
+      // 2. Blocos externos
+      const blocks = 14;
+      const blockSweep = (sweepA - (blocks - 1) * 0.03) / blocks;
+      ctx.save();
+      for (let i = 0; i < blocks; i++) {
+        const active = (i / blocks) < p;
+        const bStart = startA + i * (blockSweep + 0.03);
+        ctx.strokeStyle = active ? color2 : 'rgba(255,255,255,0.03)';
+        ctx.lineWidth = thk;
+        ctx.beginPath(); ctx.arc(cx, cy, r + 2, bStart, bStart + blockSweep); ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawArcDashed(ctx, w, h, p, color1, color2, color3, thk) {
+      const cx = w / 2; const cy = h / 2 + 10;
+      const r = Math.min(w, h) * 0.38;
+      const startA = 135 * Math.PI / 180;
+      const sweepA = 270 * Math.PI / 180;
+
+      // Fundo dashed
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+      ctx.lineWidth = thk;
+      ctx.setLineDash([3, 5]);
+      ctx.beginPath(); ctx.arc(cx, cy, r, startA, startA + sweepA); ctx.stroke();
+      ctx.restore();
+
+      // Ativo dashed com gradiente suave real
+      ctx.save();
+      ctx.lineWidth = thk;
+      ctx.setLineDash([3, 5]);
+      const grad = ctx.createConicGradient(startA, cx, cy);
+      grad.addColorStop(0, color1);
+      grad.addColorStop(0.5, color2);
+      grad.addColorStop(1, color3);
+      ctx.strokeStyle = grad;
+      ctx.beginPath(); ctx.arc(cx, cy, r, startA, startA + sweepA * p); ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawBarSlanted(ctx, w, h, p, color1, color2, color3, thk) {
+      const pad = 25;
+      const barW = w - pad * 2;
+      const barH = thk * 2.2;
+      const bx = pad;
+      const by = h / 2 - barH / 2;
+
+      const divs = 16;
+      const segW = (barW - (divs - 1) * 5) / divs;
+      const slant = 10;
+
+      for (let i = 0; i < divs; i++) {
+        const segP = i / divs;
+        const active = segP < p;
+        let col = color1;
+        if (segP > 0.5) col = color2;
+        if (segP > 0.8) col = color3;
+
+        ctx.save();
+        ctx.fillStyle = active ? col : 'rgba(255,255,255,0.04)';
+        if (active) {
+          ctx.shadowColor = col;
+          ctx.shadowBlur = 6;
+        }
+
+        const x = bx + i * (segW + 5);
+        ctx.beginPath();
+        ctx.moveTo(x + slant, by);
+        ctx.lineTo(x + segW + slant, by);
+        ctx.lineTo(x + segW, by + barH);
+        ctx.lineTo(x, by + barH);
+        ctx.closePath(); ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    function drawBarChevrons(ctx, w, h, p, color1, color2, thk) {
+      const padY = 35;
+      const barW = thk * 6;
+      const barH = h - padY * 2;
+      const bx = w / 2 - barW / 2;
+      const by = padY;
+
+      const divs = 12;
+      const segH = (barH - (divs - 1) * 4) / divs;
+
+      for (let i = 0; i < divs; i++) {
+        const segP = i / divs;
+        const active = segP < p;
+        const col = segP > 0.7 ? color2 : color1;
+
+        ctx.save();
+        ctx.strokeStyle = active ? col : 'rgba(255,255,255,0.03)';
+        ctx.lineWidth = (thk * 0.45) * (1 + segP * 0.4);
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        if (active) {
+          ctx.shadowColor = col; ctx.shadowBlur = 8;
+        }
+
+        const y = by + barH - i * (segH + 4);
+        ctx.beginPath();
+        ctx.moveTo(bx, y);
+        ctx.lineTo(bx + barW / 2, y - 6);
+        ctx.lineTo(bx + barW, y);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // Barra: Cursor Laser
+    function drawBarLaserCursor(ctx, w, h, p, color1, color2, thk) {
+      const pad = 25;
+      const barW = w - pad * 2;
+      const barH = 4; // Fina
+      const bx = pad;
+      const by = h / 2 - barH / 2;
+
+      // Trilho de fundo
+      ctx.save();
+      ctx.fillStyle = 'rgba(255,255,255,0.05)';
+      ctx.fillRect(bx, by, barW, barH);
+      ctx.restore();
+
+      if (p <= 0) return;
+
+      const fillW = barW * p;
+      const cursorX = bx + fillW;
+
+      // Linha ativa com degradê suave
+      ctx.save();
+      const trailGrad = ctx.createLinearGradient(bx, by, cursorX, by);
+      trailGrad.addColorStop(0, 'rgba(0, 242, 255, 0.05)');
+      trailGrad.addColorStop(1, color1);
+      ctx.fillStyle = trailGrad;
+      ctx.fillRect(bx, by, fillW, barH);
+      ctx.restore();
+
+      // Cursor laser na ponta (Glow circular duplo)
+      ctx.save();
+      ctx.shadowColor = color1;
+      ctx.shadowBlur = 12;
+      ctx.fillStyle = color1;
+      ctx.beginPath();
+      ctx.arc(cursorX, by + barH/2, thk * 0.7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      ctx.save();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(cursorX, by + barH/2, thk * 0.35, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Barra: Célula de Fusão
+    function drawBarFusionCells(ctx, w, h, p, color1, color2, color3, thk) {
+      const pad = 25;
+      const barW = w - pad * 2;
+      const barH = thk * 2;
+      const bx = pad;
+      const by = h / 2 - barH / 2;
+
+      const divs = 10;
+      const cellW = (barW - (divs - 1) * 6) / divs;
+
+      for (let i = 0; i < divs; i++) {
+        const segP = i / divs;
+        const active = segP < p;
+        
+        let col = color1;
+        if (segP > 0.5) col = color2;
+        if (segP > 0.8) col = color3;
+
+        const x = bx + i * (cellW + 6);
+
+        // Vidro/Contorno
+        ctx.save();
+        ctx.strokeStyle = active ? col : 'rgba(255,255,255,0.06)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.roundRect(x, by, cellW, barH, 4);
+        ctx.stroke();
+        ctx.restore();
+
+        // Núcleo iluminado
+        if (active) {
+          ctx.save();
+          ctx.fillStyle = col;
+          ctx.shadowColor = col;
+          ctx.shadowBlur = 8;
+          ctx.beginPath();
+          ctx.roundRect(x + 2, by + 2, cellW - 4, barH - 4, 2);
+          ctx.fill();
+          ctx.restore();
+
+          // Reflexo
+          ctx.save();
+          ctx.fillStyle = 'rgba(255,255,255,0.35)';
+          ctx.fillRect(x + 3, by + 3, (cellW - 6) * 0.45, 1.5);
+          ctx.restore();
+        } else {
+          ctx.save();
+          ctx.fillStyle = 'rgba(255,255,255,0.02)';
+          ctx.beginPath();
+          ctx.roundRect(x + 2, by + 2, cellW - 4, barH - 4, 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+    }
+
+    function drawBarHex(ctx, w, h, p, color1, color2, color3, thk) {
+      const pad = 25;
+      const barW = w - pad * 2;
+      const hexSize = thk * 0.9;
+      const hexH = hexSize * Math.sqrt(3);
+      const bx = pad;
+      const by = h / 2;
+
+      const divs = 14;
+      const spacingX = (barW - hexSize * 2) / (divs - 1);
+
+      for (let i = 0; i < divs; i++) {
+        const segP = i / divs;
+        const active = segP < p;
+
+        let col = color1;
+        if (segP > 0.55) col = color2;
+        if (segP > 0.8) col = color3;
+
+        const hx = bx + i * spacingX + hexSize;
+        const hy = by;
+
+        ctx.save();
+        ctx.fillStyle = active ? col : 'rgba(255,255,255,0.04)';
+        if (active) {
+          ctx.shadowColor = col; ctx.shadowBlur = 8;
+        }
+
+        // Hexágono
+        ctx.beginPath();
+        for (let j = 0; j < 6; j++) {
+          const angle = (j * Math.PI) / 3;
+          const vx = hx + Math.cos(angle) * hexSize;
+          const vy = hy + Math.sin(angle) * hexSize;
+          if (j === 0) ctx.moveTo(vx, vy); else ctx.lineTo(vx, vy);
+        }
+        ctx.closePath(); ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    // UPDATE RENDER CALLS FOR ALL
+    function updateVisuals() {
+      let p = parseFloat(valueSlider.value) / 100;
+      if (isDemoActive) {
+        // Modo demo altera p ciclicamente simulando rotação e aceleração
+        demoAngle += 0.025;
+        p = 0.5 + 0.45 * Math.sin(demoAngle) + 0.05 * Math.cos(demoAngle * 4.3);
+        valueSlider.value = Math.round(p * 100);
+        valDisplay.textContent = valueSlider.value;
+      }
+
+      const c1 = colorInput1.value;
+      const c2 = colorInput2.value;
+      const c3 = colorInput3.value;
+      const thk = parseInt(thicknessSlider.value);
+
+      syncInputs();
+
+      canvasIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const ctx = el.getContext('2d');
+        const w = el.width;
+        const h = el.height;
+        ctx.clearRect(0, 0, w, h);
+
+        if (id === 'c-arc-tapered') drawArcTapered(ctx, w, h, p, c1, thk);
+        else if (id === 'c-arc-conic') drawArcConic(ctx, w, h, p, c1, c2, c3, thk);
+        else if (id === 'c-arc-dots') drawArcDots(ctx, w, h, p, c1, c2, c3, thk);
+        else if (id === 'c-arc-nested') drawArcNested(ctx, w, h, p, c1, c2, thk);
+        else if (id === 'c-arc-dashed') drawArcDashed(ctx, w, h, p, c1, c2, c3, thk);
+        else if (id === 'c-bar-slanted') drawBarSlanted(ctx, w, h, p, c1, c2, c3, thk);
+        else if (id === 'c-bar-chevrons') drawBarChevrons(ctx, w, h, p, c1, c2, thk);
+        else if (id === 'c-bar-laser-cursor') drawBarLaserCursor(ctx, w, h, p, c1, c2, thk);
+        else if (id === 'c-bar-fusion') drawBarFusionCells(ctx, w, h, p, c1, c2, c3, thk);
+        else if (id === 'c-bar-hex') drawBarHex(ctx, w, h, p, c1, c2, c3, thk);
+      });
+
+      // Renderiza o mockup integrado do cockpit
+      drawCockpit(p, c1, c2, c3);
+    }
+
+    // COCKPIT RENDERING
+    function drawCockpit(p, c1, c2, c3) {
+      // 1. RPM (Arco Cônico)
+      const rpmEl = document.getElementById('cockpit-rpm');
+      if (rpmEl) {
+        const ctx = rpmEl.getContext('2d');
+        const w = rpmEl.width; const h = rpmEl.height;
+        ctx.clearRect(0,0,w,h);
+        const cx = w/2; const cy = h/2 + 25; const r = 110;
+        const sa = 140 * Math.PI / 180; const sw = 260 * Math.PI / 180;
+        
+        // Ticks fundos
+        drawArcBackgroundTicks(ctx, cx, cy, r, sa, sw, 20);
+        
+        // Arco
+        ctx.save();
+        ctx.lineWidth = 14; ctx.lineCap = 'round';
+        const grad = ctx.createConicGradient(sa, cx, cy);
+        grad.addColorStop(0, '#00ffaa');
+        grad.addColorStop(0.6, '#ffcc00');
+        grad.addColorStop(0.9, '#ff0055');
+        ctx.strokeStyle = grad;
+        ctx.beginPath(); ctx.arc(cx, cy, r, sa, sa + sw * p); ctx.stroke();
+        ctx.restore();
+
+        // Valor central
+        ctx.fillStyle = '#fff'; ctx.font = '900 32px "Orbitron"'; ctx.textAlign = 'center';
+        ctx.fillText(Math.round(p * 8000), cx, cy - 10);
+        ctx.fillStyle = '#889'; ctx.font = 'bold 12px "Orbitron"';
+        ctx.fillText('RPM', cx, cy + 15);
+      }
+
+      // 2. Velocidade (Arco Progressivo Crescente)
+      const spdEl = document.getElementById('cockpit-speed');
+      if (spdEl) {
+        const ctx = spdEl.getContext('2d');
+        const w = spdEl.width; const h = spdEl.height;
+        ctx.clearRect(0,0,w,h);
+        const cx = w/2; const cy = h/2 + 25; const r = 110;
+        const sa = 140 * Math.PI / 180; const sw = 260 * Math.PI / 180;
+        
+        drawArcBackgroundTicks(ctx, cx, cy, r, sa, sw, 20);
+
+        // Fundo
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+        ctx.lineWidth = 20;
+        ctx.beginPath(); ctx.arc(cx, cy, r, sa, sa + sw); ctx.stroke();
+        ctx.restore();
+
+        // Arco Crescente Ativo
+        const steps = 90;
+        const activeSteps = Math.round(steps * p);
+        ctx.save();
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = c1;
+        for (let i = 0; i < activeSteps; i++) {
+          const stepP = i / steps;
+          const ang = sa + stepP * sw;
+          const nextAng = sa + ((i + 1.4) / steps) * sw;
+          const thickness = 3 + (15 * stepP);
+          ctx.lineWidth = thickness;
+          ctx.beginPath(); ctx.arc(cx, cy, r, ang, nextAng); ctx.stroke();
+        }
+        ctx.restore();
+
+        // Valor central
+        ctx.fillStyle = '#fff'; ctx.font = '900 42px "Orbitron"'; ctx.textAlign = 'center';
+        ctx.fillText(Math.round(p * 240), cx, cy - 10);
+        ctx.fillStyle = c1; ctx.font = 'bold 12px "Orbitron"';
+        ctx.fillText('KM/H', cx, cy + 15);
+      }
+
+      // 3. Temperatura do Motor (Laser Cursor)
+      const tmpEl = document.getElementById('cockpit-temp');
+      if (tmpEl) {
+        const ctx = tmpEl.getContext('2d');
+        const w = tmpEl.width; const h = tmpEl.height;
+        ctx.clearRect(0,0,w,h);
+        
+        ctx.fillStyle = '#889'; ctx.font = '10px "Orbitron"'; ctx.textAlign = 'center';
+        ctx.fillText('ENGINE TEMP (ºC)', w/2, 20);
+        
+        drawBarLaserCursor(ctx, w, h, p, '#00ffaa', '#ffaa00', 8);
+
+        ctx.fillStyle = '#fff'; ctx.font = '14px "Orbitron"'; ctx.textAlign = 'center';
+        ctx.fillText(Math.round(40 + p * 80) + ' ºC', w/2, h - 20);
+      }
+
+      // 4. Bateria/Poder (Células de Fusão)
+      const pwrEl = document.getElementById('cockpit-power');
+      if (pwrEl) {
+        const ctx = pwrEl.getContext('2d');
+        const w = pwrEl.width; const h = pwrEl.height;
+        ctx.clearRect(0,0,w,h);
+        
+        ctx.fillStyle = '#889'; ctx.font = '10px "Orbitron"'; ctx.textAlign = 'center';
+        ctx.fillText('FUSION CELL CAPACITY', w/2, 20);
+
+        drawBarFusionCells(ctx, w, h, p, c2, c3, '#00ffaa', 10);
+
+        ctx.fillStyle = c2; ctx.font = '14px "Orbitron"'; ctx.textAlign = 'center';
+        ctx.fillText(Math.round(p * 100) + ' %', w/2, h - 20);
+      }
+
+      // 5. Turbo Boost (Chevron Vertical)
+      const bstEl = document.getElementById('cockpit-boost');
+      if (bstEl) {
+        const ctx = bstEl.getContext('2d');
+        const w = bstEl.width; const h = bstEl.height;
+        ctx.clearRect(0,0,w,h);
+        
+        const bx = w/2 - 40; const by = 30; const barW = 80; const barH = h - 50;
+        const divs = 6;
+        const segH = (barH - (divs-1)*4) / divs;
+
+        for (let i = 0; i < divs; i++) {
+          const segP = i / divs;
+          const active = segP < p;
+          const y = by + barH - i * (segH + 4);
+
+          ctx.save();
+          ctx.strokeStyle = active ? '#ff0055' : 'rgba(255,255,255,0.03)';
+          ctx.lineWidth = 6;
+          ctx.beginPath();
+          ctx.moveTo(bx, y);
+          ctx.lineTo(bx + barW / 2, y - 5);
+          ctx.lineTo(bx + barW, y);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+    }
+
+    // EVENT LISTENERS
+    colorInput1.addEventListener('input', () => { updateVisuals(); });
+    colorInput2.addEventListener('input', () => { updateVisuals(); });
+    colorInput3.addEventListener('input', () => { updateVisuals(); });
+    valueSlider.addEventListener('input', () => { updateVisuals(); });
+    thicknessSlider.addEventListener('input', () => { updateVisuals(); });
+
+    btnDemo.addEventListener('click', () => {
+      isDemoActive = !isDemoActive;
+      btnDemo.classList.toggle('active', isDemoActive);
+    });
+
+    // Render loop
+    function render() {
+      updateVisuals();
+      requestAnimationFrame(render);
+    }
+
+    render();
+  </script>
+</body>
+</html>

@@ -108,6 +108,16 @@ function connectToDevice(address) {
           document.dispatchEvent(new CustomEvent('perf_data', { detail: j.payload }));
           return;
         }
+        if (j.cmd === 'dtc_data') {
+          // DTC real vindo do firmware (substitui o mock antigo)
+          document.dispatchEvent(new CustomEvent('dtc_data', { detail: j.codes || [] }));
+          return;
+        }
+        if (j.cmd === 'dtc_clear_result') {
+          // Resultado do clear vindo do firmware — app reage ao que foi realmente enviado
+          document.dispatchEvent(new CustomEvent('dtc_clear_result', { detail: { success: !!j.success } }));
+          return;
+        }
         processTelemetry(j);
       } catch (err) {}
     }, (err) => {

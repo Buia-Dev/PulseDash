@@ -9,6 +9,8 @@
 #include "driver/twai.h" // v5.0: CAN direto (SN65HVD230)
 #include <LittleFS.h>
 #include "BluetoothSerial.h"
+#include "esp_bt.h" // v6.9: Controle de baixo nível do rádio BT
+
 
 #define CAN_TX_PIN 17
 #define CAN_RX_PIN 16
@@ -113,6 +115,12 @@ volatile int obdState = 0;
 volatile bool btRequested = false; // dashboard controla liga/desliga
 volatile uint32_t obdLastOk = 0;
 
+// --- Variáveis de Controle e Simulação de DTC ---
+volatile bool dtcScanPending = false;
+volatile bool dtcClearPending = false;
+bool simDtcsCleared = false; // Flag para simulação em bancada
+
+
 // Sensores em struct — reset limpo e cópia atômica
 struct SensorData {
   float rpm = 0;
@@ -131,6 +139,7 @@ struct SensorData {
   float transTemp = 0;
   float oilPres = 0;
   float oilTemp = 0;
+  float loopMs = 0; // v6.9: Tempo de loop CAN em milissegundos
 };
 SensorData sensors;
 
@@ -275,6 +284,28 @@ float canReadUDS(uint32_t txId, uint32_t rxId, uint16_t pid) {
   return -999.0f;
 }
 
+
+// Converte os bytes de resposta OBD2 em string correspondente no padrão SAE J2012
+String decodeDTC(uint8_t a, uint8_t b) {
+  char typeChar;
+  uint8_t typeBits = (a >> 6) & 0x03;
+  switch (typeBits) {
+    case 0: typeChar = 'P'; break;
+    case 1: typeChar = 'C'; break;
+    case 2: typeChar = 'B'; break;
+    case 3: typeChar = 'U'; break;
+  }
+  
+  uint8_t digit2 = (a >> 4) & 0x03;
+  uint8_t digit3 = a & 0x0F;
+  uint8_t digit4 = (b >> 4) & 0x0F;
+  uint8_t digit5 = b & 0x0F;
+  
+  char buf[8];
+  snprintf(buf, sizeof(buf), "%c%d%X%X%X", typeChar, digit2, digit3, digit4, digit5);
+  return String(buf);
+}
+
 // ==============================================================
 // ★ TASK CORE 0: COMUNICAÇÃO OBD2 VIA CAN ★
 // ==============================================================
@@ -381,6 +412,89 @@ void obdTask(void *param) {
         twai_initiate_recovery();
       }
 
+      // --- TRATAMENTO FÍSICO DE DTC VIA CAN (Modo 03 e 04) ---
+      if (dtcScanPending) {
+        dtcScanPending = false;
+        logEvent("[CAN] Iniciando scan de DTCs reais via CAN...");
+        
+        twai_message_t m;
+        memset(&m, 0, sizeof(m));
+        m.identifier = 0x18DB33F1; // Broadcast OBD2 29-bit
+        m.extd = 1;
+        m.data_length_code = 8;
+        m.data[0] = 0x01; // 1 byte de dados
+        m.data[1] = 0x03; // Modo 03 (Request DTCs)
+        
+        twai_transmit(&m, pdMS_TO_TICKS(20));
+        
+        uint32_t tStart = millis();
+        bool respReceived = false;
+        String codesJson = "";
+        
+        while (millis() - tStart < 800) {
+          twai_message_t r;
+          if (twai_receive(&r, pdMS_TO_TICKS(5)) == ESP_OK) {
+            // Resposta Modo 43 da ECU do Motor (0x18DAF111) ou outra ID física (0x18DAF1XX)
+            if (r.extd && (r.identifier & 0xFFFF0000) == 0x18DA0000 && r.data[1] == 0x43) {
+              respReceived = true;
+              for (int i = 2; i < 8; i += 2) {
+                uint8_t a = r.data[i];
+                uint8_t b = r.data[i+1];
+                if (a == 0 && b == 0) continue;
+                
+                String dtc = decodeDTC(a, b);
+                if (codesJson.length() > 0) codesJson += ",";
+                codesJson += "\"" + dtc + "\"";
+              }
+              break;
+            }
+          }
+          vTaskDelay(pdMS_TO_TICKS(2));
+        }
+        
+        String jsonResp = "{\"cmd\":\"dtc_data\",\"codes\":[" + codesJson + "]}";
+        SerialBT.println(jsonResp);
+        logEvent("[BT] Resposta DTC scan enviada: " + jsonResp);
+        
+        lastLoop = millis();
+        continue;
+      }
+
+      if (dtcClearPending) {
+        dtcClearPending = false;
+        logEvent("[CAN] Enviando comando de limpeza de DTCs (Modo 04) via CAN...");
+        
+        twai_message_t m;
+        memset(&m, 0, sizeof(m));
+        m.identifier = 0x18DB33F1;
+        m.extd = 1;
+        m.data_length_code = 8;
+        m.data[0] = 0x01;
+        m.data[1] = 0x04; // Modo 04
+        
+        twai_transmit(&m, pdMS_TO_TICKS(20));
+        
+        uint32_t tStart = millis();
+        bool success = false;
+        while (millis() - tStart < 800) {
+          twai_message_t r;
+          if (twai_receive(&r, pdMS_TO_TICKS(5)) == ESP_OK) {
+            if (r.extd && (r.identifier & 0xFFFF0000) == 0x18DA0000 && r.data[1] == 0x44) {
+              success = true;
+              break;
+            }
+          }
+          vTaskDelay(pdMS_TO_TICKS(2));
+        }
+        
+        String jsonResp = "{\"cmd\":\"dtc_clear_result\",\"success\":" + String(success ? "true" : "false") + "}";
+        SerialBT.println(jsonResp);
+        logEvent("[BT] Resposta DTC clear enviada: " + jsonResp);
+        
+        lastLoop = millis();
+        continue;
+      }
+
       if (millis() - lastLoop < 10) {
         vTaskDelay(pdMS_TO_TICKS(1));
         continue;
@@ -460,7 +574,7 @@ void obdTask(void *param) {
             if (ethRatio > 1.0f) ethRatio = 1.0f;
 
             float afrTarget = 14.7f * (1.0f - ethRatio) + 9.0f * ethRatio;
-            float density = 737.0f * (1.0f - ethRatio) + 789.0f * ethRatio; // Densidade real g/L
+      float density = 737.0f * (1.0f - ethRatio) + 789.0f * ethRatio; // Densidade real g/L
 
             float calculatedFuelRate = ((maf / afrTarget) * 3600.0f) / density;
             
@@ -473,6 +587,15 @@ void obdTask(void *param) {
 
       // 3. LENTO (500ms ciclo completo / 100ms por slot circular): Executado nas iterações ímpares
       if (loopCount % 2 == 1) {
+        static uint8_t ambFailed = 0;
+        static uint32_t ambCooldown = 0;
+        
+        static uint8_t catFailed = 0;
+        static uint32_t catCooldown = 0;
+        
+        static uint8_t fuelFailed = 0;
+        static uint32_t fuelCooldown = 0;
+
         switch (slowIndex) {
           case 0: {
             float cool = canReadSensor(0x05, 1);
@@ -493,20 +616,38 @@ void obdTask(void *param) {
             break;
           }
           case 2: {
-            float amb = canReadSensor(0x46, 1);
-            if (amb > -900.0f) {
-              xSemaphoreTake(dataMutex, portMAX_DELAY);
-              sensors.ambientTemp = amb;
-              xSemaphoreGive(dataMutex);
+            if (now >= ambCooldown) {
+              float amb = canReadSensor(0x46, 1);
+              if (amb > -900.0f) {
+                ambFailed = 0;
+                xSemaphoreTake(dataMutex, portMAX_DELAY);
+                sensors.ambientTemp = amb;
+                xSemaphoreGive(dataMutex);
+              } else {
+                ambFailed++;
+                if (ambFailed >= 5) {
+                  ambCooldown = now + 30000; // 30s de cooldown
+                  logEvent("[CAN] PID Temp. Ambiente (0x46) em cooldown por falhas.");
+                }
+              }
             }
             break;
           }
           case 3: {
-            float cat = canReadSensor(0x3C, 2);
-            if (cat > -900.0f) {
-              xSemaphoreTake(dataMutex, portMAX_DELAY);
-              sensors.catalyst = cat;
-              xSemaphoreGive(dataMutex);
+            if (now >= catCooldown) {
+              float cat = canReadSensor(0x3C, 2);
+              if (cat > -900.0f) {
+                catFailed = 0;
+                xSemaphoreTake(dataMutex, portMAX_DELAY);
+                sensors.catalyst = cat;
+                xSemaphoreGive(dataMutex);
+              } else {
+                catFailed++;
+                if (catFailed >= 5) {
+                  catCooldown = now + 30000; // 30s de cooldown
+                  logEvent("[CAN] PID Catalisador (0x3C) em cooldown por falhas.");
+                }
+              }
             }
             break;
           }
@@ -521,10 +662,11 @@ void obdTask(void *param) {
             // v6.5: Polling dinâmico — 10 segundos correndo (cruzeiro) vs 1 segundo parado (abastecimento)
             uint32_t queryInterval = (currentRpm >= 800.0f) ? 10000 : 1000;
 
-            if (lastFuelQuery == 0 || nowMs - lastFuelQuery >= queryInterval) {
+            if ((lastFuelQuery == 0 || nowMs - lastFuelQuery >= queryInterval) && nowMs >= fuelCooldown) {
               lastFuelQuery = nowMs;
               float fRaw = canReadSensor(0x2F, 1);
               if (fRaw > -900.0f) {
+                fuelFailed = 0;
                 if (currentRpm >= 800.0f) {
                   // Modo Cruzeiro: amortecimento ultra-lento para ignorar chacoalhadas nas curvas
                   if (emaFuel < 0) {
@@ -540,6 +682,12 @@ void obdTask(void *param) {
                 xSemaphoreTake(dataMutex, portMAX_DELAY);
                 sensors.fuelLevel = emaFuel;
                 xSemaphoreGive(dataMutex);
+              } else {
+                fuelFailed++;
+                if (fuelFailed >= 5) {
+                  fuelCooldown = nowMs + 30000; // 30s de cooldown
+                  logEvent("[CAN] PID Nivel Combustivel (0x2F) em cooldown por falhas.");
+                }
               }
             }
             break;
@@ -548,16 +696,27 @@ void obdTask(void *param) {
         slowIndex = (slowIndex + 1) % 5;
       }
 
-      // Atualização periódica ultra-lenta do Etanol a cada 5 minutos (300s)
+      // Atualização periódica ultra-lenta do Etanol a cada 5 minutos (300s) com cooldown de falha
       static uint32_t lastEthUpdate = 0;
+      static uint8_t ethFailedCount = 0;
+      static uint32_t ethCooldownUntil = 0;
       if (lastEthUpdate == 0 || now - lastEthUpdate >= 300000) {
-        float eth = canReadSensor(0x52, 1);
-        if (eth > -900.0f) {
-          xSemaphoreTake(dataMutex, portMAX_DELAY);
-          sensors.ethanol = eth;
-          xSemaphoreGive(dataMutex);
-          lastEthUpdate = now;
-          logEvent("[CAN] Etanol misturado atualizado: " + String(eth) + "%");
+        if (now >= ethCooldownUntil) {
+          float eth = canReadSensor(0x52, 1);
+          lastEthUpdate = now; // Evita loop infinito de timeout no boot/falha
+          if (eth > -900.0f) {
+            ethFailedCount = 0;
+            xSemaphoreTake(dataMutex, portMAX_DELAY);
+            sensors.ethanol = eth;
+            xSemaphoreGive(dataMutex);
+            logEvent("[CAN] Etanol misturado atualizado: " + String(eth) + "%");
+          } else {
+            ethFailedCount++;
+            if (ethFailedCount >= 3) {
+              ethCooldownUntil = now + 600000; // 10 min de cooldown para desativar falha sequencial
+              logEvent("[CAN] PID Etanol (0x52) indisponivel. Entrando em cooldown de 10 min.");
+            }
+          }
         }
       }
 
@@ -603,6 +762,12 @@ void obdTask(void *param) {
         obdState = 9; 
         break;
       }
+
+      // v6.9: Salva a duração real de processamento do loop CAN na struct
+      uint32_t loopDuration = millis() - loopStart;
+      xSemaphoreTake(dataMutex, portMAX_DELAY);
+      sensors.loopMs = (float)loopDuration;
+      xSemaphoreGive(dataMutex);
 
       loopCount = (loopCount + 1) % 200;
 
@@ -652,7 +817,8 @@ void setup() {
   
   // Inicializa o Bluetooth Clássico NATIVO do ESP32
   SerialBT.begin("PULSESCAN");
-  Serial.println("[BT] Bluetooth Classic iniciado como PULSESCAN");
+  esp_bt_sleep_disable(); // Impede o rádio de entrar em baixo consumo (Sniff Mode) solicitado pelo Android
+  Serial.println("[BT] Bluetooth Classic iniciado como PULSESCAN e economia de energia desativada.");
 
   // Carrega a viagem atual salva (se houver)
   if (LittleFS.exists("/trip_current.json")) {
@@ -696,6 +862,9 @@ void setup() {
 // ==============================================================
 void processBluetoothCommand(String jsonStr) {
   if (jsonStr.indexOf("\"cmd\":\"sync\"") > 0) {
+    // Reset da simulação de DTC ao reconectar (sincronismo inicial)
+    simDtcsCleared = false;
+    
     int tsIdx = jsonStr.indexOf("\"ts\":");
     if (tsIdx > 0) {
       uint32_t ts = jsonStr.substring(tsIdx + 5, jsonStr.indexOf("}", tsIdx)).toInt();
@@ -758,7 +927,44 @@ void processBluetoothCommand(String jsonStr) {
       fuelPrice = p;
       Serial.printf("[TRIP] Preco do combustivel atualizado via BT: %.2f\n", p);
     }
+  } else if (jsonStr.indexOf("\"cmd\":\"dtc_scan\"") > 0) {
+    logEvent("[BT] Requisicao de DTC Scan recebida.");
+    xSemaphoreTake(dataMutex, portMAX_DELAY);
+    int state = obdState;
+    xSemaphoreGive(dataMutex);
+    
+    if (state == 4) {
+      // Se conectado ao carro, avisa a task OBD CAN para fazer a leitura física
+      dtcScanPending = true;
+    } else {
+      // Se na bancada, envia os DTCs de simulação
+      String codesJson = "";
+      if (!simDtcsCleared) {
+        codesJson = "\"P0300\",\"P0115\",\"U0100\"";
+      }
+      String jsonResp = "{\"cmd\":\"dtc_data\",\"codes\":[" + codesJson + "]}";
+      vTaskDelay(800 / portTICK_PERIOD_MS); // Simula o tempo de escaneamento
+      SerialBT.println(jsonResp);
+      logEvent("[BT] Simulado DTC Scan enviado: " + jsonResp);
+    }
+  } else if (jsonStr.indexOf("\"cmd\":\"dtc_clear\"") > 0) {
+    logEvent("[BT] Requisicao de DTC Clear recebida.");
+    xSemaphoreTake(dataMutex, portMAX_DELAY);
+    int state = obdState;
+    xSemaphoreGive(dataMutex);
+    
+    if (state == 4) {
+      dtcClearPending = true;
+    } else {
+      // Simula sucesso de limpeza e limpa a lista simulada
+      simDtcsCleared = true;
+      vTaskDelay(600 / portTICK_PERIOD_MS);
+      String jsonResp = "{\"cmd\":\"dtc_clear_result\",\"success\":true}";
+      SerialBT.println(jsonResp);
+      logEvent("[BT] Simulado DTC Clear enviado: success=true");
+    }
   }
+
 }
 
 // ==============================================================
@@ -854,12 +1060,14 @@ void loop() {
         "\"fuelRate\":%.2f,\"boost\":%.1f,\"coolant\":%.0f,\"catalyst\":%.1f,"
         "\"ambient\":%.0f,\"ethanol\":%.0f,\"voltage\":%.2f,\"fuelLevel\":%.1f,"
         "\"tripDist\":%.2f,\"tripFuel\":%.3f,\"tripTimeTot\":%u,\"tripTimeDri\":%u,"
-        "\"obd_state\":%d"
+        "\"obd_state\":%d,"
+        "\"loopMs\":%.0f"
         "}",
         s.rpm, s.speed, s.throttle, s.pedal, s.load, s.fuelRate, s.boost,
         s.coolant, s.catalyst, s.ambientTemp, s.ethanol, s.voltage, s.fuelLevel,
         tripDist, tripFuel, tripTimeTot, tripTimeDri,
-        st);
+        st,
+        s.loopMs);
     
     SerialBT.println(buf);
   }

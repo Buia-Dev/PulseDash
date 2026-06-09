@@ -1,6 +1,6 @@
 # 📱 App Android (APK)
 
-> **Versão:** v6.4 | **Status:** ✅ TESTADO NO CARRO  
+> **Versão:** v6.9 | **Status:** ✅ COMPILADO E TESTADO  
 > **Framework:** Capacitor 6 + cordova-plugin-bluetooth-serial  
 > **Referência:** [[⚙️ Painel de Controle (Home)]] | [[🔌 Sensores e Comunicação]]
 
@@ -33,21 +33,21 @@ PulseDashAPP/
 O Antigravity agora compila o APK **sem abrir o Android Studio**:
 
 ```powershell
-# 1. Copiar assets do laboratório para o www
-Copy-Item -Path "PulseDash\PulseDashESP\data\*" -Destination "PulseDashAPP\www" -Force -Recurse
+# 1. Copiar assets do laboratório para o www (usando o script sync.js)
+cd PulseDashAPP; node sync.js
 
-# 2. Sincronizar com o projeto Android nativo
-cd PulseDashAPP; npx cap sync android
+# 2. Sincronizar com o projeto Android nativo (usando npx.cmd no Windows para evitar bloqueio ExecutionPolicy)
+npx.cmd cap sync android
 
-# 3. Compilar o APK
+# 3. Compilar o APK usando Gradle Wrapper e o JDK do Android Studio
 $env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
-cd android; .\gradlew assembleDebug
+cd android; .\gradlew.bat assembleDebug
 
-# 4. Copiar APK para a pasta de releases
-Copy-Item "app\build\outputs\apk\debug\app-debug.apk" "APK\PulseDash_v6.2.apk"
+# 4. Copiar APK para a pasta de releases com a tag v6.9
+Copy-Item "app\build\outputs\apk\debug\app-debug.apk" "..\APK\PulseDashV6.9.apk" -Force
 ```
 
-**APK de Release:** `C:\Users\Buia\.gemini\antigravity\scratch\APK\PulseDash_v6.2.apk`
+**APK de Release:** `C:\Users\Buia\.gemini\antigravity\scratch\PulseDash\APK\PulseDashV6.9.apk`
 
 ---
 
@@ -110,6 +110,13 @@ Copy-Item "app\build\outputs\apk\debug\app-debug.apk" "APK\PulseDash_v6.2.apk"
 | Silent Boot Crash | App travava de forma randômica logo na inicialização e o erro no console era mudo. | Extração de módulo circular. `main`, `trip` e `transport` referenciam `utils.js` agora para o `toast()`. |
 | Falha ao salvar imagem custom | Nenhuma mensagem quando a base64 não cabia no localStorage | Adicionado `alert()` interceptando `QuotaExceededError`. |
 | Widget não apagava (Ghosting) | Alterar o sensor no editor mantinha a agulha velha travada no visor | Limpeza forçada de `w._sv` e `w._lastDrawS` no `applyConfig()`. |
+
+### v6.9 (Fase de Agulhas e Release)
+| Bug / Feature | Sintoma | Fix |
+|:---|:---|:---|
+| Ponteiros de ponta pequenos | Setas/halos eram difíceis de enxergar mesmo em escalas maiores | Aplicado ganho proporcional de escala de **35%** (`sf *= 1.35`) por padrão no renderizador de agulhas. |
+| Agulhas bagunçadas no editor | Lista de 16 agulhas confusa e sem ordenação | Criado agrupamento dinâmico usando a tag `<optgroup>` dividindo-as em: *Cor Variável*, *Cor Fixa* e *Pontas*. |
+| Bloqueio ExecutionPolicy Windows | Erro ao rodar `npx cap sync android` | Contornado executando via CMD com `npx.cmd cap sync android`. |
 
 ---
 

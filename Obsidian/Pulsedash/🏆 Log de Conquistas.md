@@ -192,6 +192,10 @@ Esta sessão foi a mais importante e produtiva do projeto. Dividida em 3 fases d
 [v6.3]  Remoção de shadowBlur (Thermal Throttling) e Lazy Render otimizado
    ↓
 [v6.4]  Separação de utils.js (Fim da dependência circular e silent crashes no Boot)
+   ↓
+[v6.6]  Fase de Performance Extrema e Otimização GPU (60FPS WebView sem drop-shadow)
+   ↓
+[v6.9]  ★ INTEGRAÇÃO DE AGULHAS & RELEASE DO APK v6.9 (16 agulhas, JBR compiler)
 
 ---
 
@@ -224,3 +228,23 @@ Esta sessão foi a mais importante e produtiva do projeto. Dividida em 3 fases d
 
 **Links:** [[⚙️ Painel de Controle (Home)]] | [[📝 Lista de Tarefas]]  
 **Tags:** #conquistas #historico #milestones #canbus #pulsedash
+
+---
+
+## 🎖️ Agulhas Premium & Compilação Autônoma (v6.9 - 2026-06-09)
+
+**O que foi:** Adicionados 16 designs de agulha categorizados e configurados no painel com dropdown Figma-like, além de criar o pipeline de build e sync do APK v6.9.
+
+**Fase de Design e Categorização das Agulhas:**
+- **16 Estilos Aprovados:**
+  - *Cor Variável:* Neon Glow (original), Traço Fino, Triângulo, Ponta Cor, Halo/Flutuante, Esqueleto GT3, Lâmina Laser.
+  - *Cor Fixa:* Retro Cromo, Audi RS Red, Subaru STI Orange, Mercedes-AMG White, Corvette Yellow, Carbon Hex-Arrow.
+  - *Pontas (Setas/Halos flutuantes):* Setinha Externa, Double Ring Arrow, Halo Dot, Chevron Sweep, Crosshair Radar, Laser Dot Trail, Diamond Prism, Arc Bracket.
+- **Auto-Escala Proporcional:** Criado fator `sf = r / 138` para todas as agulhas.
+- **Ajuste de Visibilidade de Pontas (+35%):** Agulhas do grupo "Pontas" receberam escala de ampliação automática de `1.35x` no canvas para melhorar legibilidade e legibilidade mobile.
+- **Dropdown Agrupado (`<optgroup>`):** Seletor do editor reestruturado com categorias visuais divididas.
+
+**Fase de Compilação Estável do APK v6.9:**
+- **Injeção de Script Automática:** O script `sync.js` foi configurado para injetar `capacitor.js` dinamicamente no boot-file para evitar travamentos de dependências nativas.
+- **Bypass de PowerShell Execution Policy:** Executado o sync via CMD (`npx.cmd cap sync android`) para contornar restrições de permissões no Windows.
+- **Build de Release Debug v6.9:** Compilação finalizada via linha de comando local utilizando o compilador JDK JBR integrado ao Android Studio. O arquivo gerado foi arquivado em `APK/PulseDashV6.9.apk`.

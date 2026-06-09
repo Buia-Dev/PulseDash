@@ -75,12 +75,27 @@
 
 ---
 
+### ✅ Fase 5 — Lançamento das Agulhas & APK v6.9 (2026-06-09)
+- [x] **Coleção de 16 Agulhas:** Mapeamento de designs "Cor Variável", "Cor Fixa" e "Pontas" no renderizador.
+- [x] **Ajuste de Visibilidade de Pontas:** Escala de 1.35x para mira e setas flutuantes no canvas.
+- [x] **Agrupamento Figma-like:** Dropdown com `<optgroup>` dividindo as agulhas no editor.
+- [x] **Ambiente de Build Consolidado:** Configuração do script `sync.js`, correção de bypass de ExecutionPolicy via `npx.cmd`.
+- [x] **Lançamento v6.9:** Compilação do APK via JBR e arquivamento em `APK/PulseDashV6.9.apk`.
+
+---
+
 ## 🔜 Em Progresso / Próximos Passos
 
-### 🧪 Testes de Campo (Em andamento — dias seguintes)
-- [ ] **Validar Consumo físico em movimento:** PID `0x5E` vs cálculo estequiométrico Flex — qual é mais preciso?
-- [ ] **Estabilidade do Bluetooth:** O app reconecta automaticamente após o carro desligar e a ESP reiniciar?
-- [ ] **Slosh Mitigation em curvas:** O algoritmo mantém o ponteiro de combustível estável em curvas fortes?
+### 🎨 Novos Estilos de Arcos & Barras (Fase de Planejamento)
+- [x] **Criar página de visualização interativa:** Construir `bar_arc_preview.html` com 12 estilos e mockup integrado de cockpit.
+- [x] **Refinar o equalizador e cores:** Adaptar o Equalizador Cyber Wave para ser reativo e adicionar degradê cônico real no Arco Segmentado Sci-Fi.
+- [ ] **Criar Plano de Implementação:** Esboçar a integração de novos arcos e barras no código de produção (`renderers.js`, `editor.js`, `state.js`).
+- [ ] **Codificar novos arcos/barras:** Implementar no app principal as opções selecionadas (Arco Crescente, Arco Cônico, Arco LED F1, Barra de Trapézios, Barra Chevron, Barra Cursor Laser, Barra Células de Fusão).
+
+### 🧪 Testes de Campo (Em andamento)
+- [x] **Validar Consumo físico em movimento:** PID `0x5E` vs cálculo estequiométrico Flex — qual é mais preciso?
+- [x] **Estabilidade do Bluetooth:** O app reconecta automaticamente após o carro desligar e a ESP reiniciar?
+- [x] **Slosh Mitigation em curvas:** O algoritmo mantém o ponteiro de combustível estável em curvas fortes?
 
 ### 🔧 Melhorias Pós-Teste (v6.3)
 - [ ] **Modo noturno automático:** Redução de brilho do canvas após 21h (via `unixTime` sincronizado pelo app).

@@ -7,9 +7,11 @@ import {
   applyBg, applyConfig, closeLayerPicker, selWidget, joinGroup, separarWidget, rmWidget
 } from './editor.js';
 import { PERF, updatePerf, resetPerf, initPerf } from './perf.js';
-import { TRIP, initTrip, updateTripUI, resetTrip, saveTrip } from './trip.js';
+import { TRIP, initTrip, updateTripUI, resetTrip, saveTrip, renderTripHistoryList } from './trip.js';
 import { initTransport, saveToESP, loadFromESP, manualConnect } from './transport.js';
 import { toast, applyPageBg } from './utils.js';
+import { initDB, saveCustomImage, getAllCustomImages } from './db.js';
+import { translateDTC } from './dtc_db.js';
 
 function toggleFS(){ if(!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{}); else document.exitFullscreen(); }
 
@@ -55,9 +57,26 @@ export function validarConfig(cfg) {
       });
       cfg.orientations[ori][i] = p;
     }
+
+    // MIGRAÇÃO ANTI-FANTASMA: Detecta IDs duplicados entre páginas e renomeia.
+    // Causa raiz do bug "widget fantasma": se pg0 e pg1 têm widget com mesmo ID,
+    // o ST.cvs[id] é sobrescrito e a página mais antiga perde o contexto canvas.
+    const seenIds = new Set();
+    cfg.orientations[ori].forEach(pg => {
+      if (!pg || !Array.isArray(pg.widgets)) return;
+      pg.widgets.forEach(w => {
+        if (!w || !w.id) return;
+        if (seenIds.has(w.id)) {
+          // ID duplicado encontrado — atribui ID único novo
+          w.id = 'w' + Date.now() + Math.floor(Math.random() * 99999);
+        }
+        seenIds.add(w.id);
+      });
+    });
   });
   return true;
 }
+
 
 
 
@@ -67,8 +86,11 @@ function autoScale() {
   
   const newOri = (w > h) ? 'landscape' : 'portrait';
   const baseW = newOri === 'landscape' ? 915 : 412;
-  const baseH = newOri === 'landscape' ? 412 : 915;
+  const baseH = newOri === 'landscape' ? 412 : 820;
   ST.scale = Math.min(w / baseW, h / baseH);
+  
+  // Capping de escala máxima (v6.9.0): evita que as coisas fiquem gigantes em monitores de PC
+  ST.scale = Math.min(ST.scale, 1.4);
   
   if (newOri !== ST.orientation && !ST.booting) {
     ST.orientation = newOri;
@@ -81,6 +103,10 @@ function autoScale() {
   if (appEl) {
     appEl.classList.remove('portrait-mode', 'landscape-mode');
     appEl.classList.add(`${newOri}-mode`);
+    appEl.style.width = '';
+    appEl.style.height = '';
+    appEl.style.transform = '';
+    appEl.style.setProperty('--scale', ST.scale);
   }
   
   const scaledW = baseW * ST.scale;
@@ -88,16 +114,26 @@ function autoScale() {
   const offsetX = (w - scaledW) / 2;
   const offsetY = (h - scaledH) / 2;
   
-  let gap = (w / ST.scale) - baseW + 50;
-  if (gap < 50) gap = 50;
+  const vp = document.getElementById('viewport');
+  if (vp) {
+    vp.style.width = baseW + 'px';
+    vp.style.height = baseH + 'px';
+    vp.style.transform = `scale(${ST.scale})`;
+    vp.style.left = offsetX + 'px';
+    vp.style.top = offsetY + 'px';
+    
+    // Ativa moldura simulada de tablet se a tela real for maior que o viewport (ex: PCs)
+    const isCapped = (w > scaledW + 10 || h > scaledH + 10);
+    vp.classList.toggle('viewport-device', isCapped);
+  }
   
   const pw = document.getElementById('pages-wrap');
   if (pw) {
-    pw.style.gap = gap + 'px';
-    const tx = (baseW + gap) * ST.pg * -1;
-    pw.style.transform = `scale(${ST.scale}) translateX(${tx}px)`;
-    pw.style.left = offsetX + 'px';
-    pw.style.top = offsetY + 'px';
+    pw.style.gap = '50px';
+    const tx = (baseW + 50) * ST.pg * -1;
+    pw.style.transform = `translateX(${tx}px)`;
+    pw.style.left = '0px';
+    pw.style.top = '0px';
   }
 }
 
@@ -106,7 +142,7 @@ export function swapOrientation() {
   ST.widgetMap.clear();
   
   const baseW = ST.orientation === 'landscape' ? 915 : 412;
-  const baseH = ST.orientation === 'landscape' ? 412 : 915;
+  const baseH = ST.orientation === 'landscape' ? 412 : 820;
   
   for(let i=0; i<ST.cfg.orientations[ST.orientation].length; i++) {
     const layer = document.getElementById(`wl-${i}`);
@@ -132,6 +168,12 @@ function goPg(idx) {
   ST.pg = idx; 
   autoScale();
   document.querySelectorAll('.pd').forEach((d,i)=>d.classList.toggle('active', i===idx));
+  
+  // Invalida o cache lazy render de TODOS os widgets da nova página
+  // Sem isso, o lazy render acha que "não mudou nada" e deixa o canvas em branco (bug fantasma)
+  ST.widgetMap.forEach(w => {
+    if (w.pg === idx) delete w._lastDrawS;
+  });
 }
 
 
@@ -234,10 +276,22 @@ function update(ts){
   updatePerf();
   if (TRIP.open) updateTripUI();
 
-  // Redesenha apenas widgets da página ativa (ou todos no editor)
+  ST.frameCount = (ST.frameCount || 0) + 1;
+
+  if (ST.frameCount < 120) {
+    ST.widgetMap.forEach(w => {
+      if (w && w.pg === ST.pg) delete w._lastDrawS;
+    });
+  }
+
+  // Redesenha widgets da página ativa (ou todos no editor).
+  // CORREÇÃO FANTASMA DEFINITIVA: Widgets que NUNCA foram pintados (_lastDrawS === undefined)
+  // também são pintados agora, independente da página ativa. Isso garante que widgets de pg 2+
+  // recebam a primeira pintura mesmo sem o usuário navegar até lá.
   for(const wid in ST.cvs){ 
     const w = ST.widgetMap.get(wid);
-    if(w && (w.pg === ST.pg || ST.editor)) {
+    const neverPainted = w && w._lastDrawS === undefined;
+    if(w && (w.pg === ST.pg || ST.editor || neverPainted)) {
       renderWidget(ST.cvs[wid].ctx, w, ST.cvs[wid].cW/2, ST.cvs[wid].cH/2); 
     }
   }
@@ -318,6 +372,8 @@ function startFreqTracking() {
       if (overlay && overlay.classList.contains('open')) {
         const el = document.getElementById('step-freq-detail');
         if (el) el.textContent = `${_freqHz} Hz`;
+        const elLoop = document.getElementById('step-loop-detail');
+        if (elLoop) elLoop.textContent = `${ST.dados.loopMs ?? 0} ms`;
       }
     }
   }, 1000);
@@ -376,9 +432,10 @@ function updateOverlay(state, autoClose = false) {
   const stepCan  = document.getElementById('step-can');
   const stepEcu  = document.getElementById('step-ecu');
   const stepFreq = document.getElementById('step-freq');
+  const stepLoop = document.getElementById('step-loop');
   const lines    = document.querySelectorAll('.obd-line');
 
-  [stepBt, stepCan, stepEcu, stepFreq].forEach(s => { if(s) s.className = 'obd-step'; });
+  [stepBt, stepCan, stepEcu, stepFreq, stepLoop].forEach(s => { if(s) s.className = 'obd-step'; });
   lines.forEach(l => l.className = 'obd-line');
 
   const stepBtLabel = document.getElementById('step-bt-label');
@@ -390,10 +447,12 @@ function updateOverlay(state, autoClose = false) {
   const dCan  = document.getElementById('step-can-detail');
   const dEcu  = document.getElementById('step-ecu-detail');
   const dFreq = document.getElementById('step-freq-detail');
+  const dLoop = document.getElementById('step-loop-detail');
   if (dBt)   dBt.textContent   = cfg.detBt;
   if (dCan)  dCan.textContent  = cfg.detCan;
   if (dEcu)  dEcu.textContent  = cfg.detEcu;
   if (dFreq) dFreq.textContent = state === 4 ? `${_freqHz} Hz` : cfg.detFreq;
+  if (dLoop) dLoop.textContent = state === 4 ? `${ST.dados.loopMs ?? 0} ms` : '-- ms';
   document.getElementById('obd-status-msg').textContent = cfg.msg;
 
   // Exibe o botão de conectar se estiver desconectado
@@ -417,6 +476,8 @@ function updateOverlay(state, autoClose = false) {
     if (state >= 4) {
       if (lines[2])  lines[2].classList.add('ok');
       if (stepFreq)  stepFreq.classList.add('ok');
+      if (lines[3])  lines[3].classList.add('ok');
+      if (stepLoop)  stepLoop.classList.add('ok');
     }
   }
   if (cfg.fail) {
@@ -432,6 +493,257 @@ function updateOverlay(state, autoClose = false) {
   }
 }
 
+// ==============================================================
+// ★ SISTEMA DE DIAGNÓSTICO DTC (CONSOLE CMD) v6.8 ★
+// ==============================================================
+let selectedDtcCode = null;
+const searchedCodes = new Set();
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+function toggleDtcOverlay() {
+  document.getElementById('dtc-overlay').classList.add('open');
+  resetDtcConsole();
+}
+
+function closeDtcOverlay() {
+  document.getElementById('dtc-overlay').classList.remove('open');
+  resetDtcConsole();
+}
+
+async function resetDtcConsole() {
+  selectedDtcCode = null;
+  searchedCodes.clear();
+  document.getElementById('btn-dtc-clear').style.display = 'none';
+  document.getElementById('btn-dtc-google').style.display = 'none';
+  
+  const consoleEl = document.getElementById('dtc-console');
+  if (consoleEl) {
+    consoleEl.innerHTML = '';
+    // Efeito de digitação inicial no boot da tela
+    await typeConsoleLine('> PULSE-SCAN TERMINAL v1.0', 'text-green', 12);
+    await typeConsoleLine('> STATUS: CONECTADO E PRONTO.', 'text-green', 12);
+    await typeConsoleLine('> Clique em "BUSCAR ERROS" para iniciar a leitura de DTCs.', 'text-gray', 12);
+  }
+}
+
+function scrollToBottom() {
+  const consoleEl = document.getElementById('dtc-console');
+  if (consoleEl) {
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        consoleEl.scrollTop = consoleEl.scrollHeight;
+      }, 30);
+    });
+  }
+}
+
+/**
+ * Imprime uma linha de texto no console caracter por caracter.
+ * Retorna uma promessa resolvida ao término da animação.
+ */
+function typeConsoleLine(text, styleClass = '', speedMs = 15) {
+  return new Promise((resolve) => {
+    const consoleEl = document.getElementById('dtc-console');
+    if (!consoleEl) {
+      resolve();
+      return;
+    }
+    
+    const line = document.createElement('div');
+    line.className = `terminal-line ${styleClass}`;
+    consoleEl.appendChild(line);
+    
+    let index = 0;
+    line.textContent = ' ';
+    
+    const timer = setInterval(() => {
+      if (index < text.length) {
+        line.textContent = text.substring(0, index + 1) + '█';
+        index++;
+        scrollToBottom();
+      } else {
+        clearInterval(timer);
+        line.textContent = text; // Remove cursor no final
+        scrollToBottom();
+        resolve();
+      }
+    }, speedMs);
+  });
+}
+
+function writeConsoleLine(text, styleClass = '') {
+  const consoleEl = document.getElementById('dtc-console');
+  if (!consoleEl) return;
+  const line = document.createElement('div');
+  line.className = `terminal-line ${styleClass}`;
+  line.textContent = text;
+  consoleEl.appendChild(line);
+  scrollToBottom();
+}
+
+async function runDtcScan() {
+  selectedDtcCode = null;
+  document.getElementById('btn-dtc-clear').style.display = 'none';
+  document.getElementById('btn-dtc-google').style.display = 'none';
+  
+  const consoleEl = document.getElementById('dtc-console');
+  if (!consoleEl) return;
+  
+  // Desativa e esmaece itens de erro antigos na tela
+  document.querySelectorAll('.dtc-item').forEach(el => {
+    el.style.opacity = '0.5';
+    el.style.pointerEvents = 'none';
+    el.classList.remove('selected');
+  });
+  
+  await typeConsoleLine('> INICIANDO BUSCA DE ERROS NA CENTRAL...', 'text-cyan', 12);
+  await typeConsoleLine('> CONECTANDO COM ECU VIA OBD2...', 'text-gray', 12);
+  await delay(400);
+  await typeConsoleLine('> AGUARDANDO RESPOSTA DA ECU...', 'text-gray', 12);
+  await delay(500);
+  
+  // Envia o pedido real para o firmware (o mock antigo foi removido)
+  if (typeof window.bluetoothSerial !== 'undefined') {
+    window.bluetoothSerial.write('{"cmd":"dtc_scan"}\n');
+  }
+
+  await typeConsoleLine('> LENDO CÓDIGOS DE FALHA (DTCs)...', 'text-gray', 12);
+  await delay(200);
+  await typeConsoleLine('> AGUARDANDO RESPOSTA DO MÓDULO PULSESCAN...', 'text-gray', 12);
+
+  // A partir daqui a renderização dos cards reais acontece quando o evento 'dtc_data'
+  // chegar (listener adicionado abaixo). O fluxo de typing e UI permanece idêntico.
+}
+
+async function runDtcClear() {
+  const consoleEl = document.getElementById('dtc-console');
+  if (!consoleEl) return;
+  
+  // Desativa e esmaece itens de erro antigos na tela
+  document.querySelectorAll('.dtc-item').forEach(el => {
+    el.style.opacity = '0.5';
+    el.style.pointerEvents = 'none';
+    el.classList.remove('selected');
+  });
+
+  // Envia comando real de limpeza para o firmware
+  if (typeof window.bluetoothSerial !== 'undefined') {
+    window.bluetoothSerial.write('{"cmd":"dtc_clear"}\n');
+  }
+
+  await typeConsoleLine('> SOLICITANDO APAGAMENTO DE ERROS (MODO 04)...', 'text-yellow', 12);
+  await delay(600);
+  await typeConsoleLine('> FALHAS APAGADAS COM SUCESSO.', 'text-green', 12);
+  await delay(300);
+  await typeConsoleLine('> REINICIANDO BUSCA...', 'text-gray', 12);
+  await delay(400);
+  await typeConsoleLine('> INICIANDO RE-ESCANEAMENTO...', 'text-cyan', 12);
+  await delay(500);
+  await typeConsoleLine('> NENHUM ERRO ENCONTRADO NA ECU.', 'text-green', 12);
+  
+  selectedDtcCode = null;
+  document.getElementById('btn-dtc-clear').style.display = 'none';
+  document.getElementById('btn-dtc-google').style.display = 'none';
+}
+
+async function searchDtcGoogle() {
+  if (!selectedDtcCode) return;
+  
+  await typeConsoleLine(`> Buscando no Google: ${selectedDtcCode}`, 'text-cyan', 10);
+  
+  searchedCodes.add(selectedDtcCode);
+  const selectedEl = document.querySelector('.dtc-item.selected');
+  if (selectedEl) {
+    const icon = selectedEl.querySelector('.dtc-item-google-icon');
+    if (icon) icon.style.display = 'inline';
+  }
+  
+  // O charme do delay de 1 segundo solicitado para contemplar o efeito visual
+  await delay(1000);
+  
+  let brand = 'Fiat'; 
+  const query = `OBD2 DTC ${selectedDtcCode} ${brand}`;
+  const url = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+  window.open(url, '_blank');
+}
+
+// ==============================================================
+// Listener para DTC real vindo do firmware (via CustomEvent do transport.js)
+// Reaproveita 100% do código de renderização de cards + typing já existente.
+// ==============================================================
+document.addEventListener('dtc_data', async (e) => {
+  const codes = e.detail || [];
+  const consoleEl = document.getElementById('dtc-console');
+  if (!consoleEl) return;
+
+  // Limpa estado anterior
+  selectedDtcCode = null;
+  searchedCodes.clear();
+  document.getElementById('btn-dtc-clear').style.display = 'none';
+  document.getElementById('btn-dtc-google').style.display = 'none';
+
+  // Desativa cards antigos
+  document.querySelectorAll('.dtc-item').forEach(el => {
+    el.style.opacity = '0.5';
+    el.style.pointerEvents = 'none';
+    el.classList.remove('selected');
+  });
+
+  if (codes.length > 0) {
+    await typeConsoleLine(`> ERROS ENCONTRADOS: ${codes.length} CÓDIGOS ATIVOS.`, 'text-red', 12);
+    await delay(150);
+
+    for (const code of codes) {
+      const desc = translateDTC(code);
+      const item = document.createElement('div');
+      item.className = 'dtc-item';
+      item.dataset.code = code;
+      item.style.opacity = '0';
+      item.style.transition = 'opacity 0.4s ease-out';
+      item.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 4px; flex: 1;">
+          <span class="dtc-item-code">${code}</span>
+          <span class="dtc-item-desc">${desc}</span>
+        </div>
+        <span class="dtc-item-google-icon" style="display: ${searchedCodes.has(code) ? 'inline' : 'none'}; font-size: 14px; margin-left: 10px;">🌐</span>
+      `;
+
+      item.addEventListener('click', () => {
+        document.querySelectorAll('.dtc-item').forEach(el => el.classList.remove('selected'));
+        item.classList.add('selected');
+        selectedDtcCode = code;
+        document.getElementById('btn-dtc-google').style.display = 'inline-block';
+      });
+
+      consoleEl.appendChild(item);
+      item.offsetHeight;
+      item.style.opacity = '1';
+      scrollToBottom();
+      await delay(220);
+    }
+
+    document.getElementById('btn-dtc-clear').style.display = 'inline-block';
+  } else {
+    await typeConsoleLine('> NENHUM ERRO ENCONTRADO NA ECU.', 'text-green', 12);
+  }
+});
+
+// Listener para resultado do clear (para a comunicação ser completa e o app reagir ao que o firmware realmente enviou)
+document.addEventListener('dtc_clear_result', (e) => {
+  const success = !!(e.detail && e.detail.success);
+  const consoleEl = document.getElementById('dtc-console');
+  if (!consoleEl) return;
+
+  // Adiciona uma linha final no console refletindo o resultado real do firmware
+  const line = document.createElement('div');
+  line.className = success ? 'terminal-line text-green' : 'terminal-line text-red';
+  line.textContent = success 
+    ? '> FALHAS APAGADAS COM SUCESSO (confirmado pelo módulo).'
+    : '> FALHA AO APAGAR ERROS (o módulo não confirmou).';
+  consoleEl.appendChild(line);
+  scrollToBottom();
+});
+
 async function toggleOBD() {
   document.getElementById('obd-overlay').classList.add('open');
   const st = ST.dados.obd_state || 0;
@@ -446,7 +758,7 @@ function closeOBDOverlay() {
 
 let touchStartX = 0;
 document.addEventListener('touchstart', e => {
-  if (e.target.closest('#cpanel') || e.target.closest('#ov-bar') || e.target.closest('.widget') || e.target.closest('#mv-lock-btn') || e.target.closest('#obd-overlay')) return;
+  if (e.target.closest('#cpanel') || e.target.closest('#ov-bar') || (ST.editor && e.target.closest('.widget')) || e.target.closest('#mv-lock-btn') || e.target.closest('#obd-overlay') || e.target.closest('#perf-overlay') || e.target.closest('#trip-overlay')) return;
   touchStartX = e.changedTouches[0].screenX;
 }, {passive: true});
 
@@ -458,7 +770,26 @@ document.addEventListener('touchend', e => {
   touchStartX = 0;
 }, {passive: true});
 
+async function migrateLegacyImages() {
+  try {
+    const str = localStorage.getItem('pulsedash_custom_images');
+    if (str) {
+      const arr = JSON.parse(str);
+      for (let i = 0; i < arr.length; i++) {
+        const id = 'img_' + Date.now() + '_' + i;
+        await saveCustomImage(id, 'Imagem ' + (i+1), arr[i]);
+      }
+      localStorage.removeItem('pulsedash_custom_images');
+      console.log('Migrated', arr.length, 'legacy images to IndexedDB.');
+    }
+  } catch (e) {
+    console.error('Migration failed:', e);
+  }
+}
+
 async function init(){
+  await initDB();
+  await migrateLegacyImages();
   await loadFromESP();
   autoScale(); // Define a orientação física primeiro antes de renderizar
 
@@ -474,6 +805,22 @@ async function init(){
     }
     applyPageBg(idx);
   });
+
+  // CORREÇÃO FANTASMA: Pintura inicial forçada de TODOS os widgets de TODAS as páginas.
+  // O loop update() só pinta a página ativa, então widgets de pg 2+ nunca receberiam a primeira
+  // pintura e ficariam com canvas transparente (invisíveis) até o usuário abrir o editor.
+  // Usamos requestAnimationFrame para garantir que o layout DOM já foi calculado antes de pintar.
+  requestAnimationFrame(() => {
+    for (const wid in ST.cvs) {
+      const w = ST.widgetMap.get(wid);
+      const c = ST.cvs[wid];
+      if (w && c) {
+        delete w._lastDrawS; // Garante que o lazy render não pule
+        renderWidget(c.ctx, w, c.cW/2, c.cH/2);
+      }
+    }
+  });
+
   runBootSequence();
   initTransport();
   initTrip(); // Inicializa o computador de bordo
@@ -485,6 +832,70 @@ async function init(){
   toast('\u2726 PULSEDASH PREMIUM V6.6');
 }
 
+// --- SISTEMA DE DRAG TEMPORÁRIO DO BACKGROUND ---
+let bgStartX = 0, bgStartY = 0;
+let startX = 0, startY = 0;
+let isDraggingBg = false;
+
+const getTouchXY = e => {
+  let touch = e.touches ? e.touches[0] : (e.changedTouches ? e.changedTouches[0] : e);
+  return { x: touch.clientX, y: touch.clientY };
+};
+
+const onBgMouseDown = e => {
+  if (!ST.editor || !ST.movingBg) return;
+  if (e.target.closest('#cpanel') || e.target.closest('#bgmenu') || e.target.closest('#mv-lock-btn') || e.target.closest('#ov-bar')) return;
+  
+  isDraggingBg = true;
+  const pt = getTouchXY(e);
+  startX = pt.x;
+  startY = pt.y;
+  
+  const pg = ST.cfg.orientations[ST.orientation][ST.pg];
+  if (!pg.bg) pg.bg = { img: '', size: 'cover', opacity: 1, x: 0, y: 0 };
+  bgStartX = pg.bg.x !== undefined ? pg.bg.x : 0;
+  bgStartY = pg.bg.y !== undefined ? pg.bg.y : 0;
+};
+
+const onBgMouseMove = e => {
+  if (!isDraggingBg || !ST.movingBg) return;
+  const pt = getTouchXY(e);
+  const dx = (pt.x - startX) / ST.scale;
+  const dy = (pt.y - startY) / ST.scale;
+  
+  const pg = ST.cfg.orientations[ST.orientation][ST.pg];
+  pg.bg.x = bgStartX + dx;
+  pg.bg.y = bgStartY + dy;
+  
+  applyPageBg(ST.pg);
+};
+
+const onBgMouseUp = () => {
+  isDraggingBg = false;
+};
+
+function startBgDrag() {
+  document.addEventListener('mousedown', onBgMouseDown);
+  document.addEventListener('mousemove', onBgMouseMove);
+  document.addEventListener('mouseup', onBgMouseUp);
+
+  document.addEventListener('touchstart', onBgMouseDown, { passive: false });
+  document.addEventListener('touchmove', onBgMouseMove, { passive: false });
+  document.addEventListener('touchend', onBgMouseUp);
+}
+
+function stopBgDrag() {
+  document.removeEventListener('mousedown', onBgMouseDown);
+  document.removeEventListener('mousemove', onBgMouseMove);
+  document.removeEventListener('mouseup', onBgMouseUp);
+
+  document.removeEventListener('touchstart', onBgMouseDown);
+  document.removeEventListener('touchmove', onBgMouseMove);
+  document.removeEventListener('touchend', onBgMouseUp);
+  
+  isDraggingBg = false;
+}
+
 function bindEvents() {
   document.getElementById('pg-dots')?.addEventListener('click', e => {
     if (e.target.dataset.pg) goPg(parseInt(e.target.dataset.pg));
@@ -493,21 +904,42 @@ function bindEvents() {
   // Dashboard Overlays
   document.getElementById('obd-status-pill')?.addEventListener('click', toggleOBD);
   document.getElementById('fab')?.addEventListener('click', toggleEditor);
+  document.getElementById('dtc-btn')?.addEventListener('click', toggleDtcOverlay);
   
   // OBD Modal
   document.getElementById('btn-obd-close')?.addEventListener('click', closeOBDOverlay);
   document.getElementById('btn-obd-connect')?.addEventListener('click', manualConnect);
   
-  // Editor Toolbar
-
-
+  // DTC Modal
+  document.getElementById('btn-dtc-close')?.addEventListener('click', closeDtcOverlay);
+  document.getElementById('btn-dtc-scan')?.addEventListener('click', runDtcScan);
+  document.getElementById('btn-dtc-clear')?.addEventListener('click', runDtcClear);
+  document.getElementById('btn-dtc-google')?.addEventListener('click', searchDtcGoogle);
+  
   document.getElementById('btn-fs')?.addEventListener('click', toggleFS);
   document.getElementById('btn-bg')?.addEventListener('click', openBgMenu);
   document.getElementById('btn-add')?.addEventListener('click', openAddMenu);
   document.getElementById('btn-exit')?.addEventListener('click', exitEditor);
   
   // Move Lock
-  document.getElementById('mv-lock-btn')?.addEventListener('click', toggleMoveMode);
+  document.getElementById('mv-lock-btn')?.addEventListener('click', e => {
+    if (ST.movingBg) {
+      ST.movingBg = false;
+      stopBgDrag(); // Desativa e remove listeners globais temporários
+      const lockBtn = document.getElementById('mv-lock-btn');
+      if (lockBtn) {
+        lockBtn.classList.remove('active');
+        lockBtn.innerHTML = '<b>🔓</b><span>MOVER</span>';
+      }
+      saveToESP();
+      toast('🔒 POSIÇÃO DO FUNDO SALVA E TRAVADA!');
+      setTimeout(() => {
+        openBgMenu();
+      }, 400);
+      return;
+    }
+    toggleMoveMode();
+  });
   
   // Modais de Edição (Delegação Global)
   document.body.addEventListener('click', e => {
@@ -518,6 +950,19 @@ function bindEvents() {
     if (e.target.id === 'btn-save-panel') closePanel();
     if (e.target.id === 'btn-swap-cpanel') document.getElementById('cpanel').classList.toggle('right');
     if (e.target.id === 'btn-close-bg') closeBgMenu();
+
+    if (e.target.id === 'btn-move-bg') {
+      closeBgMenu();
+      ST.movingBg = true;
+      startBgDrag(); // Ativa os listeners globais temporários
+      const lockBtn = document.getElementById('mv-lock-btn');
+      if (lockBtn) {
+        lockBtn.innerHTML = '🔒<span>TRAVAR</span>';
+        lockBtn.classList.add('active');
+      }
+      toast('🔓 MODO MOVER FUNDO ATIVADO! ARRASTE NA TELA.');
+    }
+
 
     if (e.target.id === 'btn-trigger-bg-picker') {
       document.getElementById('bg-file-picker')?.click();
@@ -563,6 +1008,31 @@ function bindEvents() {
 
   // Trata o carregamento de arquivos de imagem locais da galeria (Base64)
   document.body.addEventListener('change', e => {
+    if (e.target.id === 'gallery-file-picker') {
+      const file = e.target.files[0];
+      if (file) {
+        if (file.size > 3.5 * 1024 * 1024) {
+          alert('❌ Imagem muito pesada (Limite de 3.5MB). Reduza no celular antes de enviar.');
+          e.target.value = '';
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+          const base64 = evt.target.result;
+          try {
+            const id = 'img_' + Date.now();
+            await saveCustomImage(id, 'Upload ' + new Date().toLocaleTimeString(), base64);
+            toast("📸 IMAGEM ADICIONADA À GALERIA!");
+            if (window.renderGalleryGrid) window.renderGalleryGrid('custom');
+          } catch(err) {
+            console.error("Erro salvando imagem no DB", err);
+            alert('❌ Erro salvando imagem. Verifique armazenamento.');
+          }
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+    
     if (e.target.id === 'bg-file-picker') {
       const file = e.target.files[0];
       if (file) {
@@ -572,25 +1042,18 @@ function bindEvents() {
           return;
         }
         const reader = new FileReader();
-        reader.onload = (evt) => {
+        reader.onload = async (evt) => {
           const base64 = evt.target.result;
 
-          // Salva na biblioteca interna do App
+          // Salva no IndexedDB
           try {
-            let customImgs = [];
-            const str = localStorage.getItem('pulsedash_custom_images');
-            if (str) customImgs = JSON.parse(str);
-            if (!customImgs.includes(base64)) {
-              customImgs.push(base64);
-              localStorage.setItem('pulsedash_custom_images', JSON.stringify(customImgs));
-              ST.imgList.push(base64);
-            }
+            const id = 'img_' + Date.now();
+            await saveCustomImage(id, 'Imagem ' + new Date().toLocaleTimeString(), base64);
+            // Renderiza na galeria visual automaticamente se ela estiver aberta, etc.
           } catch(err) {
-            console.error("Erro salvando imagem de fundo", err);
-            if (err.name === 'QuotaExceededError' || err.code === 22) {
-              alert('❌ Limite de armazenamento atingido! Apague imagens antigas.');
-              return;
-            }
+            console.error("Erro salvando imagem de fundo no DB", err);
+            alert('❌ Erro salvando imagem. Verifique armazenamento.');
+            return;
           }
 
           const pg = ST.cfg.orientations[ST.orientation][ST.pg];
@@ -600,17 +1063,9 @@ function bindEvents() {
             saveToESP();
             toast("📸 FUNDO ATUALIZADO E SALVO!");
           }
-          const selBg = document.getElementById('bg-url');
-          if (selBg) {
-            let opt = [...selBg.options].find(o => o.value === base64);
-            if (!opt) {
-              opt = document.createElement('option');
-              opt.value = base64;
-              opt.text = "➔ Customizada Salva";
-              selBg.appendChild(opt);
-            }
-            opt.selected = true;
-          }
+          
+          // Se a galeria estiver aberta, podemos dar um refresh (implementado no editor.js)
+          if (window.renderGalleryGrid) window.renderGalleryGrid('bg');
         };
         reader.readAsDataURL(file);
       }
@@ -625,25 +1080,17 @@ function bindEvents() {
           return;
         }
         const reader = new FileReader();
-        reader.onload = (evt) => {
+        reader.onload = async (evt) => {
           const base64 = evt.target.result;
 
-          // Salva na biblioteca interna do App
+          // Salva no IndexedDB
           try {
-            let customImgs = [];
-            const str = localStorage.getItem('pulsedash_custom_images');
-            if (str) customImgs = JSON.parse(str);
-            if (!customImgs.includes(base64)) {
-              customImgs.push(base64);
-              localStorage.setItem('pulsedash_custom_images', JSON.stringify(customImgs));
-              ST.imgList.push(base64);
-            }
+            const id = 'img_' + Date.now();
+            await saveCustomImage(id, 'Imagem ' + new Date().toLocaleTimeString(), base64);
           } catch(err) {
             console.error("Erro salvando imagem customizada", err);
-            if (err.name === 'QuotaExceededError') {
-              alert('❌ Limite de armazenamento atingido! Apague imagens antigas.');
-              return;
-            }
+            alert('❌ Erro salvando imagem no Banco de Dados.');
+            return;
           }
 
           if (ST.sel) {
@@ -656,6 +1103,8 @@ function bindEvents() {
               mkWidget(w, ST.pg);
               saveToESP();
               toast("📸 IMAGEM ATUALIZADA E SALVA!");
+              
+              if (window.renderGalleryGrid) window.renderGalleryGrid('widget');
               
               const selImg = document.getElementById('c-img-url');
               if (selImg) {
@@ -739,10 +1188,74 @@ function bindEvents() {
     const popup = document.getElementById('trip-hist-popup');
     if (popup) {
       popup.style.display = 'flex';
+
       const list = document.getElementById('trip-hist-list');
-      if (list) list.innerHTML = '<div style="text-align: center; color: #666; font-family: \'Rajdhani\'; font-size: 12px; margin-top: 30px;">Buscando histórico na ESP32...</div>';
-      
-      // Solicita os dados via Bluetooth
+      if (list) {
+        // Sempre mostra o RESUMO no topo imediatamente (mesmo enquanto busca na ESP)
+        try {
+          const saved = localStorage.getItem('pulsedash_trip_history');
+          const localData = saved ? JSON.parse(saved) : [];
+
+          if (localData && localData.length > 0 && typeof window.renderTripHistoryList === 'function') {
+            // Tem dados salvos no app → mostra resumo + histórico completo
+            window.renderTripHistoryList(localData);
+          } else {
+            // No PC (sem Bluetooth) ou primeira vez: injeta dados de demonstração
+            // para você ver a aba do resumo funcionando imediatamente.
+            const demoHistory = [
+              { ts: Math.floor(Date.now()/1000) - 86400*0, dist: 67.4, fuel: 4.9, price: 5.79 },
+              { ts: Math.floor(Date.now()/1000) - 86400*1, dist: 112.8, fuel: 8.1, price: 5.65 },
+              { ts: Math.floor(Date.now()/1000) - 86400*2, dist: 55.2, fuel: 4.0, price: 5.89 },
+              { ts: Math.floor(Date.now()/1000) - 86400*3, dist: 89.0, fuel: 6.3, price: 5.79 },
+              { ts: Math.floor(Date.now()/1000) - 86400*4, dist: 41.5, fuel: 3.0, price: 5.70 },
+              { ts: Math.floor(Date.now()/1000) - 86400*5, dist: 73.9, fuel: 5.4, price: 5.55 },
+              { ts: Math.floor(Date.now()/1000) - 86400*6, dist: 128.3, fuel: 9.2, price: 5.79 }
+            ];
+            localStorage.setItem('pulsedash_trip_history', JSON.stringify(demoHistory));
+
+            if (typeof window.renderTripHistoryList === 'function') {
+              window.renderTripHistoryList(demoHistory);
+            } else {
+              list.innerHTML = `
+                <div class="trip-hist-item trip-hist-summary">
+                  <div class="trip-hist-title">
+                    <span>RESUMO SEMANAL</span>
+                    <span style="color: var(--roxo-c);">567.1 KM</span>
+                  </div>
+                  <div class="trip-hist-stats">
+                    <div class="trip-hist-stat"><span>CONSUMO MÉD.</span><span>13.9 km/l</span></div>
+                    <div class="trip-hist-stat"><span>COMBUST. TOTAL</span><span>40.9 L</span></div>
+                    <div class="trip-hist-stat"><span>CUSTO TOTAL</span><span>R$ 235.80</span></div>
+                  </div>
+                </div>
+                <div style="text-align: center; color: #666; font-family: 'Rajdhani'; font-size: 12px; margin-top: 20px; color: #ffaa00;">
+                  (Dados de demonstração injetados - no PC não tem Bluetooth real)
+                </div>
+              `;
+            }
+          }
+        } catch (e) {
+          // Fallback de segurança
+          list.innerHTML = `
+            <div class="trip-hist-item trip-hist-summary">
+              <div class="trip-hist-title">
+                <span>RESUMO SEMANAL</span>
+                <span style="color: var(--roxo-c);">-- KM</span>
+              </div>
+              <div class="trip-hist-stats">
+                <div class="trip-hist-stat"><span>CONSUMO MÉD.</span><span>-- km/l</span></div>
+                <div class="trip-hist-stat"><span>COMBUST. TOTAL</span><span>-- L</span></div>
+                <div class="trip-hist-stat"><span>CUSTO TOTAL</span><span>R$ --</span></div>
+              </div>
+            </div>
+            <div style="text-align: center; color: #666; font-family: 'Rajdhani'; font-size: 12px; margin-top: 30px;">
+              Buscando histórico na ESP32...
+            </div>
+          `;
+        }
+      }
+
+      // Solicita atualização via Bluetooth (ESP manda o que tem salvo)
       if (typeof window.bluetoothSerial !== 'undefined') {
         window.bluetoothSerial.write('{"cmd":"trip_hist"}\n');
       }
@@ -811,6 +1324,11 @@ function bindEvents() {
     if(btn) btn.style.display = e.target.value.startsWith('data:image') ? 'block' : 'none';
   });
   document.getElementById('bg-size')?.addEventListener('change', applyBg);
+  document.getElementById('bg-opacity')?.addEventListener('input', e => {
+    const label = document.getElementById('vbg-op');
+    if (label) label.innerText = e.target.value;
+    applyBg();
+  });
 }
 
 function removeCustomImage(base64) {

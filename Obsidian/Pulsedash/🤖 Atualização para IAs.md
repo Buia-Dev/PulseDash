@@ -4,8 +4,8 @@
 
 ---
 
-## 📅 Última Atualização: 2026-05-30
-**Versão Atual:** v6.6 — **OTIMIZADO PARA MOBILE** ✅
+## 📅 Última Atualização: 2026-06-09
+**Versão Atual:** v6.9 — **COLEÇÃO DE AGULHAS & NATIVE BUILD** ✅
 
 ---
 
@@ -18,20 +18,24 @@
 
 ---
 
-## 🏗️ Arquitetura de Arquivos (v6.2)
+## 🏗️ Arquitetura de Arquivos (v6.9)
 
 ```
-gol_g1_dashboard/PulseDashESP/data/js/
-├── state.js       — Sensores, CFG_DEF, LOCAL_IMAGES, SENSORS_CONFIG, ICONES_SVG
-├── renderers.js   — Desenho Canvas: arcos, barras, agulhas, réguas, luzes espia
-├── editor.js      — Editor drag-and-drop, FIELD_MAP, applyConfig, openPanel
-├── main.js        — Loop rAF, OBD overlay, swapOrientation, variáveis globais
-├── transport.js   — Bluetooth Serial nativo, saveToESP, loadFromESP, saveRecordes
-├── perf.js        — Cronômetro 0-100, state machine, Top 5, histórico
-└── trip.js        — Computador de bordo (distância, combustível, custo, timers)
+PulseDash/PulseDash/data/
+├── index.html        — Layout de widgets, modais, handling de erros
+├── bar_arc_preview.html — Preview de 10 novos conceitos de arcos e barras
+├── needle_preview.html  — Preview e catálogo das 16 agulhas
+└── js/
+    ├── state.js      — Sensores, CONFIG, agulhas (NEEDLES_CONFIG)
+    ├── renderers.js  — Canvas Rendering, auto-escala (sf), 16 agulhas
+    ├── editor.js     — Editor drag-and-drop, dropdown agrupado com <optgroup>
+    ├── main.js       — Loop requestAnimationFrame
+    ├── transport.js  — Bluetooth Serial RFCOMM e WebSocket fallback
+    ├── perf.js       — Cronômetro 0-100, state machine, Top 5
+    └── trip.js       — Computador de bordo (timers, odômetro, boia slosh)
 ```
 
-**Regra de ouro:** A pasta `gol_g1_dashboard` é o LABORATÓRIO. A pasta `PulseDash v6.0` é o REPOSITÓRIO OFICIAL. Sempre sincronizar ao finalizar uma sessão de trabalho.
+**Regra de ouro:** A pasta `PulseDash/PulseDash/data` é o LABORATÓRIO. A pasta `PulseDash/PulseDashAPP` é o REPOSITÓRIO OFICIAL. Sempre sincronizar rodando `node sync.js` e `npx.cmd cap sync android` na pasta do APP.
 
 ---
 
@@ -95,12 +99,16 @@ gol_g1_dashboard/PulseDashESP/data/js/
 
 | Arquivo | Localização |
 |:---|:---|
-| APK de Release | `scratch/APK/PulseDashV6.6.apk` |
-| Firmware `.bin` | `scratch/APK/Firmware/PulseDashESP_BT.ino.bin` |
-| Código ESP32 | `scratch/PulseDash v6.0/PulseDashESP_BT/PulseDashESP_BT.ino` |
-| Laboratório Web | `scratch/gol_g1_dashboard/PulseDashESP/data/` |
-| Projeto Android | `scratch/PulseDash v6.0/PulseDashAPP/android/` |
+| APK de Release | `scratch/PulseDash/APK/PulseDashV6.9.apk` |
+| Firmware `.bin` | `scratch/PulseDash/APK/Firmware/PulseDashESP_BT.ino.bin` |
+| Código ESP32 | `scratch/PulseDash/PulseDashESP_BT/PulseDashESP_BT.ino` |
+| Laboratório Web | `scratch/PulseDash/PulseDash/data/` |
+| Projeto Android | `scratch/PulseDash/PulseDashAPP/android/` |
 
 ---
 
-**Dica para IA:** Sempre sincronizar `gol_g1_dashboard` → `PulseDash v6.0` ao finalizar sessão. Usar `npx cap sync android` antes de `gradlew assembleDebug`. JAVA_HOME = `C:\Program Files\Android\Android Studio\jbr`.
+**Dica para IA:** Para sincronizar e buildar:
+1. Vá até `PulseDashAPP` e rode `node sync.js`.
+2. Rode `npx.cmd cap sync android` (usar `.cmd` no Windows).
+3. Vá até `PulseDashAPP/android` e rode `$env:JAVA_HOME = 'C:\Program Files\Android\Android Studio\jbr'; .\gradlew.bat assembleDebug`.
+4. Copie o APK gerado de `app/build/outputs/apk/debug/app-debug.apk` para `APK/PulseDashV6.9.apk`.
