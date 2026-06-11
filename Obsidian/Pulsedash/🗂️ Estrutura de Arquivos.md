@@ -1,4 +1,4 @@
-# 🗂️ Estrutura de Arquivos (v6.4)
+# 🗂️ Estrutura de Arquivos (v7.0)
 
 > O projeto PulseDash é dividido em dois sistemas: o **Firmware ESP32** e o **App Android (APK via Capacitor)**.
 
@@ -17,14 +17,15 @@ PulseDash/                     ← Pasta raiz do repositório
 │       ├── needle_preview.html ← Preview e catálogo das 16 agulhas
 │       ├── bar_arc_preview.html ← Preview dos 10 novos estilos de arcos/barras
 │       └── js/
-│           ├── state.js       ← Definições de agulhas (NEEDLES_CONFIG) e sensores
-│           ├── renderers.js   ← Motor Canvas com auto-escala (sf) e rendering logic
+│           ├── state.js       ← Definições de agulhas, sensores e ST
+│           ├── renderers.js   ← Motor Canvas com auto-escala (sf)
 │           ├── editor.js      ← Seletor Figma-like com <optgroup>
-│           ├── utils.js       ← Funções utilitárias puras (toast, math)
-│           ├── main.js        ← Loop principal requestAnimationFrame
-│           ├── transport.js   ← Bluetooth Serial e WebSocket fallback
+│           ├── utils.js       ← Funções utilitárias puras (toast)
+│           ├── main.js        ← Loop principal requestAnimationFrame (30fps cap)
+│           ├── transport.js   ← Bluetooth Serial e JIT cache de formulas
 │           ├── perf.js        ← Cronômetro de performance 0-100
-│           └── trip.js        ← Computador de bordo (timings, odômetro)
+│           ├── profiles_db.js ← Banco de dados de 18 perfis OBD2/UDS
+│           └── trip.js        ← Computador de bordo (event delegation no histórico)
 │
 ├── PulseDashAPP/              ← Projeto Capacitor (Android)
 │   ├── www/                   ← Assets compilados e sincronizados
@@ -36,7 +37,7 @@ PulseDash/                     ← Pasta raiz do repositório
 │   └── PulseDashESP_BT.ino    ← Firmware ESP32 (CAN 29-bit + Bluetooth SPP)
 │
 ├── APK/                       ← Pasta de distribuição dos executáveis
-│   ├── PulseDashV6.9.apk      ← APK compilado da versão atual v6.9
+│   ├── PulseDashV7.0.apk      ← APK compilado da versão atual v7.0
 │   └── Firmware/              ← Firmware .bin compilado para gravação
 │
 ├── Obsidian/                  ← Documentação Obsidian (esta base de conhecimento)
@@ -47,60 +48,54 @@ PulseDash/                     ← Pasta raiz do repositório
 
 ---
 
-## 🖥️ Módulos JS (v6.2)
+## 🖥️ Módulos JS (v7.0)
 
 ### `state.js` — O Cérebro
-- `SENSORS_CONFIG`: todos os sensores, unidades e agrupamentos
-- `ST`: estado global (página, dados ECU, editor, smooth)
-- `CFG_DEF`: layout padrão de fábrica dos widgets
+- `SENSORS_CONFIG`: todos os sensores, unidades e agrupamentos.
+- `ST`: estado global (página, dados ECU, editor, smooth, disabledSensors).
+- `CFG_DEF`: layout padrão de fábrica dos widgets.
 
 ### `renderers.js` — A Força Bruta
 Canvas API puro:
-- `drawArcoPuro()`, `drawBarraPura()`, `drawAgulhaPura()`, `drawReguaPura()`
-- `drawLuzEspia()`, `drawNumeroPuro()`, `drawEconometroClassico()`
+- `drawArcoPuro()`, `drawBarraPura()`, `drawAgulhaPura()`, `drawReguaPura()`.
+- `drawLuzEspia()`, `drawNumeroPuro()`. Sem shadowBlur para evitar superaquecimento.
 
 ### `editor.js` — O Estúdio
-- `FIELD_MAP` com +40 propriedades configuráveis
-- Drag-and-drop, grupos, layer picker, applyConfig
+- Drag-and-drop, grupos, cores, dropdown agrupado com `<optgroup>`.
 
 ### `utils.js` — O Utilitário
-- Armazena as funções puras independentes (`toast()`, helpers genéricos)
-- Criado para quebrar a importação circular entre main, trip e transport
+- Armazena a função `toast()`. Resolveu as dependências circulares de ES6.
 
 ### `main.js` — O Coração
-- Loop `requestAnimationFrame` throttled a **30fps** (33ms budget)
-- Overlay OBD2, pill de status, frequência BT
-- `swapOrientation()` para portrait/landscape independentes
+- Loop `requestAnimationFrame` throttled a **30fps** (33ms budget).
+- Terminal DTC e cancelamento automático de timers de animação.
 
 ### `transport.js` — A Comunicação
-- Bluetooth Serial nativo (`cordova-plugin-bluetooth-serial`)
-- WebSocket fallback (Wi-Fi)
-- `saveToESP()`, `loadFromESP()`, `saveRecordes()`
+- Bluetooth Serial nativo, parse de telemetria binária de 51 bytes.
+- **JIT Cache:** Map local `formulaCache` para lookup rápido de fórmulas de sensores.
 
 ### `perf.js` — O Cronômetro
-- State machine: IDLE → WAIT_STOP → READY → RUNNING → DONE
-- Split automático em 50, 100 km/h
-- Top 5 persistido no localStorage
+- State machine 0-100, split automático de tempos e histórico Top 5.
+
+### `profiles_db.js` — Banco de Perfis
+- Coleção de 18 perfis do RealDash estruturados para universalização de PIDs.
 
 ### `trip.js` — O Computador de Bordo
-- Timers acumulados localmente (dt = 0.5s via setInterval 2Hz)
-- Distância: delta do odômetro físico (PID `0x31`) desde `initialOdometer`
-- Fallback por integração de velocidade se odômetro indisponível
-- Consumo integrado via `fuelRate` (L/h → L)
+- Odômetro de viagem, integração de consumo em L/h, e delegação estática de cliques no histórico.
 
 ---
 
 ## ⚙️ Firmware: `PulseDashESP_BT.ino`
 
-| Seção | Responsabilidade |
+| Seção / Task | Responsabilidade |
 |:---|:---|
-| `canInit()` | Inicializa driver TWAI 29-bit @ 500kbps |
-| `canSendOBD()` | Envia frame CAN de requisição de PID |
-| `canReadSensor()` | Envia PID e aguarda resposta (timeout 12ms) |
-| `obdTask()` | **Core 0:** Handshake + scheduler circular 10 slots |
-| `loop()` | **Core 1:** JSON a 20Hz via `SerialBT.println()` |
+| `canInit()` | Inicializa driver TWAI (Baudrate e Filtros) |
+| `canReadSensorRaw()` | Envia requisição OBD2/UDS e trata NRCs (0x7F com 0x78 pending) |
+| `obdTask()` | **Core 0 (prioridade 5):** Handshake + scheduler circular por skipCount dinâmico |
+| `fsTask()` | **Core 0 (prioridade 1):** Escrita assíncrona na Flash via LittleFS (Antilag) |
+| `loop()` | **Core 1 (prioridade 1):** Processa comandos Bluetooth e sincroniza dados |
 
 ---
 
 **Links:** [[⚙️ Painel de Controle (Home)]] | [[🖥️ Interface e Widgets]] | [[🚀 Plano de Implementação ESP32-OBD2]]  
-**Tags:** #estrutura #arquivos #modularizacao #firmware #frontend #android #capacitor
+**Tags:** #estrutura #arquivos #modularizacao #firmware #frontend #android #capacitor #v70

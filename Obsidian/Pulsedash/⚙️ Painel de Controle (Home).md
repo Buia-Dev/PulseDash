@@ -1,6 +1,6 @@
 # ⚙️ PulseDash — Hub de Desenvolvimento
 
-> **Versão Atual: v6.9** | Status: ✅ **TESTADO E COMPILADO** | Protocolo: **CAN Bus 29-bit (TWAI) + Bluetooth Classic**
+> **Versão Atual: v7.0** | Status: ✅ **TESTADO E COMPILADO** | Protocolo: **CAN Bus 29-bit (TWAI) + Bluetooth Classic**
 
 Bem-vindo à base de conhecimento central do **PulseDash**, o painel de instrumentos digital premium construído do zero para o **Onix 2026**, servindo também como plataforma universal para outros veículos.
 
@@ -11,13 +11,13 @@ O projeto evoluiu de uma ideia com ELM327 Bluetooth para um sistema de **leitura
 ## 🧭 Índice do Projeto
 
 ### 🔧 Hardware & Firmware
-- [[🔌 Sensores e Comunicação]]: Protocolo CAN 29-bit, endereços confirmados, PIDs ativos e scheduler de slots.
-- [[🚀 Plano de Implementação ESP32-OBD2]]: Arquitetura do firmware v6.0, scheduler circular, Bluetooth RFCOMM.
+- [[🔌 Sensores e Comunicação]]: Protocolo CAN 29-bit, endereços confirmados, PIDs ativos e scheduler dinâmico.
+- [[🚀 Plano de Implementação ESP32-OBD2]]: Arquitetura do firmware v7.0, scheduler dinâmico, fsTask antilag no Core 0.
 - [[🔧 Hardware e Pinagem]]: SN65HVD230, OBD2 connector, pinos do ESP32, diagrama elétrico.
 
 ### 🖥️ Interface & Frontend
 - [[🖥️ Interface e Widgets]]: Todos os tipos de medidores disponíveis (Arcos, Barras, Agulhas, Luzes Espia).
-- [[🗂️ Estrutura de Arquivos]]: Modularização do código v6.0 — `state.js`, `renderers.js`, `editor.js`, `main.js`, `transport.js`.
+- [[🗂️ Estrutura de Arquivos]]: Modularização do código v7.0 — `state.js`, `renderers.js`, `editor.js`, `main.js`, `transport.js`, `profiles_db.js`.
 - [[📱 App Android (APK)]]: Capacitor + Bluetooth Serial, build, instalação e arquitetura do app nativo.
 - [[🚀 Animação de Inicialização]]: Sequência de Boot cinematográfico com rastros PCB e Neon.
 
@@ -27,7 +27,7 @@ O projeto evoluiu de uma ideia com ELM327 Bluetooth para um sistema de **leitura
 
 ---
 
-## 📊 Estado Atual do Sistema (v6.9 — COMPILADO)
+## 📊 Estado Atual do Sistema (v7.0 — COMPILADO)
 
 | Componente | Status | Detalhe |
 |:---|:---:|:---|
@@ -36,21 +36,26 @@ O projeto evoluiu de uma ideia com ELM327 Bluetooth para um sistema de **leitura
 | Bluetooth Classic | ✅ FUNCIONAL | RFCOMM, nome `PULSESCAN` |
 | RPM | ✅ FUNCIONAL | PID `0x0C`, 20Hz |
 | Velocidade | ✅ FUNCIONAL | PID `0x0D`, 20Hz |
-| Borboleta (TPS) | ✅ FUNCIONAL | PID `0x11`, ~6.6Hz |
-| Pedal Real (APP) | ✅ FUNCIONAL | PID `0x49`, ~4Hz |
-| Carga do Motor | ✅ FUNCIONAL | PID `0x04`, ~2Hz |
+| Borboleta (TPS) | ✅ FUNCIONAL | PID `0x11`, dinâmico |
+| Pedal Real (APP) | ✅ FUNCIONAL | PID `0x49`, dinâmico |
+| Carga do Motor | ✅ FUNCIONAL | PID `0x04`, dinâmico |
 | MAP / Boost | ✅ FUNCIONAL* | PID `0x0B` + fallback virtual |
-| MAF / Vazão Ar | ✅ FUNCIONAL | PID `0x10`, ~2Hz |
+| MAF / Vazão Ar | ✅ FUNCIONAL | PID `0x10`, dinâmico |
 | Consumo (L/h) | ✅ FUNCIONAL* | PID `0x5E` + fallback Flex |
-| Voltagem | ✅ FUNCIONAL | PID `0x42`, ~0.28Hz |
-| Temp. Água | ✅ FUNCIONAL | PID `0x05`, ~0.28Hz |
-| Catalisador | ✅ FUNCIONAL | PID `0x3C`, ~0.28Hz |
-| Temp. Ar | ✅ FUNCIONAL | PID `0x46`, ~0.28Hz |
+| Voltagem | ✅ FUNCIONAL | PID `0x42`, lento |
+| Temp. Água | ✅ FUNCIONAL | PID `0x05`, lento |
+| Catalisador | ✅ FUNCIONAL | PID `0x3C`, lento |
+| Temp. Ar | ✅ FUNCIONAL | PID `0x46`, lento |
 | Nível Combustível | ✅ FUNCIONAL | PID `0x2F` + Slosh Mitigation |
-| Etanol % | ✅ FUNCIONAL | PID `0x52`, startup + 5min |
-| Temp. Câmbio (UDS) | ❌ FALHOU | Service 22 não respondido no carro |
-| Pressão Óleo (UDS) | ❌ FALHOU | Service 22 não respondido no carro |
-| Temp. Óleo (UDS) | ❌ FALHOU | Service 22 não respondido no carro |
+| Etanol % | ✅ FUNCIONAL | PID `0x52`, startup + lento |
+| Pressão Óleo (P2) | ✅ FUNCIONAL | PID estendido `0x00` (resolvida colisão) |
+| Temp. Óleo (P2) | ✅ FUNCIONAL | PID estendido `0x5C` |
+| Pressão Combust. (P2) | ✅ FUNCIONAL | PID estendido `0x0A` |
+| Temp. Escape EGT (P2) | ✅ FUNCIONAL | PID estendido `0x78` (2 bytes) |
+| Mistura AFR (P2) | ✅ FUNCIONAL | PID estendido `0x44` |
+| Lambda (P2) | ✅ FUNCIONAL | PID estendido `0x24` |
+| Timing Ignição (P2) | ✅ FUNCIONAL | PID estendido `0x0E` |
+| Temp. Admissão IAT (P2)| ✅ FUNCIONAL | PID estendido `0x0F` |
 | App Android (APK) | ✅ FUNCIONAL | Capacitor + Bluetooth Serial |
 | Canvas 60fps | ✅ FUNCIONAL | requestAnimationFrame nativo |
 | Editor de Widgets | ✅ FUNCIONAL | Drag-and-drop, cores, tamanhos |
@@ -77,6 +82,7 @@ O projeto evoluiu de uma ideia com ELM327 Bluetooth para um sistema de **leitura
 | **v6.5-v6.6**| 2026-05-30 | Collision test de Z-index exato, scroll fixo no editor, dropdown de inércia e novos sensores (turbo, MAF, etc.). |
 | **v6.7-v6.8**| 2026-06-08 | Integração de 16 agulhas categorizadas (Cor Variável, Fixa e Pontas), optgroup no editor e auto-escala 1.35x nas pontas. |
 | **v6.9** | 2026-06-09 | Sincronização de assets, Capacitor sync, compilação debug via JBR Gradle e lançamento do APK v6.9. |
+| **v7.0** | 2026-06-11 | **Universalização e JIT Cache.** Frame binário de 51 bytes. 8 novos sensores de Prioridade 2 ativos. Escritas no LittleFS 100% assíncronas via `fsTask` no Core 0 (viagem, não suportados, configs, dia). JIT Cache de formulas em Map local, event delegation no histórico e fim de delays bloqueantes na ESP32. Lançamento do APK v7.0. |
 
 ---
 

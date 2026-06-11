@@ -1,6 +1,6 @@
 # 📝 Lista de Tarefas (Backlog Atualizado)
 
-> Última atualização: 2026-05-23  
+> Última atualização: 2026-06-11  
 > **Referência:** [[⚙️ Painel de Controle (Home)]]
 
 ---
@@ -9,9 +9,9 @@
 
 - [x] Unificar o código monstruoso do `index.html` em arquivos menores (v4.0).
 - [x] Padronização matemática: sensores retornam valores **reais** (não mais escala 0-1024).
-- [x] Separação em módulos: `state.js`, `renderers.js`, `editor.js`, `main.js`.
+- [x] Separação em módulos: `state.js`, `renderers.js`, `editor.js`, `main.js`, `profiles_db.js` (v7.0).
 - [x] Finalizar e refinar a Animação de Boot (PCB + Neon).
-- [x] Implementar WebSocket (porta 81) para push de dados em tempo real.
+- [x] Implementar WebSocket (porta 81) para push de dados em tempo real (Wi-Fi).
 - [x] Implementar PWA (manifest + service worker) para instalação no celular.
 - [x] Dashboard responsivo — funciona em retrato e paisagem.
 - [x] **Suavização Individual por Ponteiro (v5.4.1):** Slider de `smoothK` no editor para `agulha_pura`.
@@ -19,43 +19,25 @@
 - [x] **App Android Nativo (v6.0):** Capacitor + `cordova-plugin-bluetooth-serial`. APK funcional.
 - [x] **GPU Compositing (v6.0):** `will-change: transform` + `backface-visibility: hidden`.
 - [x] **Computador de Bordo (v6.0):** Overlay com distância, vel. média, combustível, custo e timers.
+- [x] **Agulhas Premium (v6.9):** 16 modelos premium organizados com `<optgroup>` e auto-escala 1.35x.
 
-### ✅ Fase 1 — Refatoração Arquitetural (v6.2 / 2026-05-23)
-- [x] **Extração `trip.js`:** Computador de Bordo (TRIP) extraído de `main.js` para módulo próprio.
-- [x] **Extração `perf.js`:** Cronômetro 0-100 com state machine e Top 5 extraídos para módulo próprio.
-- [x] **Criação `transport.js`:** Camada de abstração Bluetooth Serial / WebSocket. `initTransport()`, `saveToESP()`, `loadFromESP()`, `saveRecordes()`.
-- [x] **Sistema `orientations` (Portrait/Landscape independentes):** Cada orientação tem layout de widgets completamente separado.
-- [x] **Correção `w._sv` na serialização:** `saveToESP()` deleta `w._sv` antes de salvar. `applyConfig()` limpa ao trocar sensor.
-- [x] **UDS Service 22 (PIDs GM):** `canSendUDS()` + `canReadUDS()` — Temp. Câmbio, Pressão Óleo, Temp. Óleo.
-- [x] **Fallback Consumo Flex:** MAF + Etanol% → AFR dinâmico + densidade real → L/h correto para E0-E100.
-- [x] **Slosh Mitigation:** EMA com 3 modos (Fast-Fill, Bloqueio Inercial, Cruzeiro lento) para boia de combustível.
-- [x] **Etanol no Startup + 5min:** Leitura única no handshake OK + atualização periódica em background.
-- [x] **Scheduler 10 slots reformulado:** `loopCount % 2` e `% 10` para distribuição de sensores sem starvation.
+### ✅ Fase 1 a 4 — Refatorações, Otimização e Estabilidade
+- [x] **Trip e Perf Isolados:** Extração lógica para `trip.js` e `perf.js`, e interface bluetooth/WS em `transport.js`.
+- [x] **Sistema `orientations`:** Portrait e Landscape com layouts e renderização totalmente independentes.
+- [x] **UDS Service 22 (PIDs GM):** `canSendUDS` + `canReadUDS` estruturados para testes de sensores.
+- [x] **Slosh Mitigation:** Algoritmo EMA com modos Fast-Fill, Cruzeiro e Bloqueio Inercial.
+- [x] **Fim do Thermal Throttling:** Remoção do `ctx.shadowBlur` do canvas e acréscimo de **Lazy Render** (`> 0.05` delta).
+- [x] **Fim do Silent Boot Crash:** Criação de `utils.js` e remoção da dependência circular de imports ES6.
+- [x] **Tratamento de Storage:** Try/catch alertando `QuotaExceededError` no IndexedDB da galeria.
 
-### ✅ Fase 2 — Debug de UI e Build APK (v6.2 / 2026-05-23)
-- [x] **Fix ícones APK:** `ic_launcher.xml` e `ic_launcher_round.xml` corrompidos por BOM UTF-8 — recriados do zero.
-- [x] **Imagens personalizadas:** Galeria do celular → fundo de relógio no dashboard.
-- [x] **Fix duplicação de relógios ao girar:** `swapOrientation` limpa camadas `wl-N` específicas em vez de limpar `innerHTML` do container inteiro.
-- [x] **Fix cores dos arcos não salvavam:** `applyConfig` ignora inputs com `display:none` (campos de outras abas sobrescreviam as cores).
-- [x] **Fontes +2px globais:** Todos os `font-size` do `style.css` aumentados em 2px para legibilidade mobile.
-- [x] **Botão ↔ no Editor:** Restaurado no cabeçalho do `#cpanel` — alterna lado esquerdo/direito instântaneamente.
-- [x] **Build APK pelo Antigravity:** `gradlew assembleDebug` com `JAVA_HOME` do Android Studio — sem abrir a IDE.
+### ✅ Fase 5 — JIT Cache & Refinamentos de Loop (v7.0)
+- [x] **JIT Formula Cache:** Expressões em string compiladas apenas uma vez via Map local `formulaCache` em `transport.js` para evitar overhead JIT no WebView.
+- [x] **PID Collision resolved:** PID do sensor `oilPress` remapeado de `"5c"` para `"00"` para evitar conflito com o PID do `oilTemp`.
+- [x] **Delegação de Eventos:** Vinculação estática no container `#trip-hist-list` via `e.target.closest` no `trip.js` para matar vazamentos de memória.
+- [x] **Google DTC Dinâmico:** Busca dinâmica baseada na marca do perfil do carro ativa (`ST.car?.brand || 'Fiat'`).
+- [x] **Console DTC sem vazamentos:** Rastreamento de timers e resolves de digitação de console (`dtcTimers` e `dtcResolves`) cancelados no overlay close ou re-scan.
 
-### ✅ Fase 3 — Compilação CLI e Bugs de Runtime (v6.2 / 2026-05-23)
-- [x] **`arduino-cli` integrado:** Instalado, configurado `esp32:esp32@3.3.8`, compila `.ino` direto pelo terminal.
-- [x] **Fix `}` faltando no `loop()`:** Chave de fechamento engolida na refatoração — compilador detectou e corrigimos.
-- [x] **Firmware validado:** `PulseDashESP_BT.ino.bin` — 1.119.484 bytes (85% flash), 42.136 bytes RAM (12%).
-- [x] **Fix `Script error. Linha: 0:0`:** Falso positivo do Android WebView com módulos ES6 — filtro no `window.onerror`.
-- [x] **Fix `_freqHz is not defined`:** Variáveis globais de frequência declaradas no topo do `main.js`.
-- [x] **Repositório oficial sincronizado:** `PulseDashESP_BT/` só contém o `.ino`. `APK/` com APK + Firmware.
-- [x] **✅ TESTE NO CARRO:** Leitura confirmada no Onix 2026 — "ja ta lendo certim" (2026-05-23).
-
-### ✅ Fase 4 — Otimização e Estabilidade Máxima (v6.3 / v6.4)
-- [x] **Fim do Thermal Throttling:** Remoção do `ctx.shadowBlur` de todos os renderers que derretia a CPU em uso contínuo.
-- [x] **Lazy Render:** Renderizadores agora só limpam e redesenham o canvas se a variação for `> 0.05`.
-- [x] **Fim do Silent Boot Crash:** Criação do `utils.js` e eliminação da dependência circular entre arquivos.
-- [x] **Tratamento de Storage:** Adicionado `alert()` quando `QuotaExceededError` estoura ao salvar imagem de fundo.
-- [x] **Reset Manual de Página:** Botão físico adicionado para resetar widgets apenas da página atual em caso de bugs visuais.
+---
 
 ## ✅ Concluído — Hardware e Firmware
 
@@ -63,46 +45,33 @@
 - [x] Identificar endereçamento do Onix 2026: TX `0x18DB33F1` / RX `0x18DAF111`.
 - [x] Implementar handshake robusto com 10 tentativas + Tester Present de 100ms.
 - [x] Implementar recuperação automática de Bus-Off.
-- [x] Validar RPM: até **6.230 RPM** confirmado.
-- [x] Validar Velocidade: **115 km/h** confirmado.
-- [x] **Bluetooth Classic RFCOMM (v6.0):** JSON a 20Hz via `BluetoothSerial` (nome `PULSESCAN`).
-- [x] **UDS Service 22 (v6.2):** Temp. Câmbio (`0x1940`), Pressão Óleo (`0x115C`), Temp. Óleo (`0x1154`).
-
-## ✅ Concluído — Compras (BOM)
-
-- [x] **SN65HVD230** (Módulo CAN 3.3V) — adquirido e em uso.
-- [x] **Conector OBD2 J1962** — adquirido e soldado.
+- [x] **Bluetooth Classic RFCOMM (v6.0):** JSON via `BluetoothSerial` (nome `PULSESCAN`).
+- [x] **Expansão de 8 Sensores de Prioridade 2 (v7.0):** Pressão e temp de óleo, escape EGT, timing, mistura, lambda, etc. lidos via CAN e expostos.
+- [x] **Aumento do Frame Binário (v7.0):** Redimensionamento do frame compacto de 42 para **51 bytes** a 20Hz.
+- [x] **DTC sem delays bloqueantes (v7.0):** Removidos `vTaskDelay` síncronos na ESP32 no DTC scan/clear desconectado.
+- [x] **Uptime Máximo / Sem Strings no Histórico (v7.0):** Montagem do histórico diário refatorada para buffer estático `char[1024]` e `snprintf` na ESP32.
+- [x] **Task FS de Background no Core 0 (v7.0):** Todas as escritas LittleFS (viagens de 5km, motor desligado, sensor não suportado, escrita de histórico no dia, perfil do carro) movidas para background via FreeRTOS na `fsTask` no Core 0.
 
 ---
 
-### ✅ Fase 5 — Lançamento das Agulhas & APK v6.9 (2026-06-09)
-- [x] **Coleção de 16 Agulhas:** Mapeamento de designs "Cor Variável", "Cor Fixa" e "Pontas" no renderizador.
-- [x] **Ajuste de Visibilidade de Pontas:** Escala de 1.35x para mira e setas flutuantes no canvas.
-- [x] **Agrupamento Figma-like:** Dropdown com `<optgroup>` dividindo as agulhas no editor.
-- [x] **Ambiente de Build Consolidado:** Configuração do script `sync.js`, correção de bypass de ExecutionPolicy via `npx.cmd`.
-- [x] **Lançamento v6.9:** Compilação do APK via JBR e arquivamento em `APK/PulseDashV6.9.apk`.
+## 🔜 Em Progresso / Próximos Passos (Fase 6 - Robustez Nível 2)
 
-### ✅ Fase 6 — Universalização OBD2 & Telemetria Binária v7.0 (2026-06-11)
-- [x] **Dropdown Dinâmico de Perfis:** Menu de seleção de perfil associado à marca do carro no front-end (`main.js`).
-- [x] **Compilador de Configuração (`CFG;`):** Abstração automática de baudrate, tipo de CAN e IDs de mensagens a partir do array `init` (`transport.js`).
-- [x] **Parser Dinâmico 16-bit / Modos:** Firmware ESP32 decodifica PIDs de 1 ou 2 bytes e Modos (01, 21, 22) baseados no comprimento do hex string.
-- [x] **Telemetria Binária Compacta:** Implementação de frame de 42 bytes a 20Hz (50ms) com checagem de checksum e alinhador de buffer no app.
-- [x] **Handshake Estendido UDS:** Suporte a handshake com modo e PID customizados (ex: UDS `10 03`) e persistência LittleFS `/car_profile.cfg`.
-
----
-
-## 🔜 Em Progresso / Próximos Passos
+### 🔬 Otimizações e Correções Críticas (Framwork Nível 2)
+- [ ] **ISO-TP Multi-Frame (DTC Scan):** Implementar leitura de Consecutive Frames (`(r.data[0] & 0xF0) == 0x20`) e Flow Control (`0x30 0x00 0x00`) usando o ID Físico de envio da ECU para ler mais de 3 DTCs.
+- [ ] **Tratamento de NRC 0x7F:** Tratar respostas `0x7F` na `canReadSensorRaw`. Se o subcódigo for `0x78` (Response Pending), pausar 10ms e estender o loop de timeout em mais 200ms. Para outros NRCs, retornar `-998`.
+- [ ] **Desativação Imediata por NRC:** Ao ler `-998`, desabilitar o sensor permanentemente de imediato e enviar o JSON `{"cmd":"sensor_disabled","id":ID}`.
+- [ ] **WakeLock no WebView:** Adquirir o WakeLock de tela na conexão de dados Bluetooth (`navigator.wakeLock.request('screen')`) e liberar na desconexão.
+- [ ] **Indicador Visual de Sensor Degradado:** Tratar evento `'sensor_disabled'` no JS para esmaecer o gauge correspondente (grayscale e opacidade) com um pseudo-elemento ⚠️ amarelo de aviso.
+- [ ] **Indicador Visual de Sinal Perdido (Gauges Congelados):** Se a conexão OBD ficar offline por mais de 3s (`obd_state != 4`), adicionar a classe `.gauge-stale` em todos os widgets para pulsar a borda em cor âmbar.
+- [ ] **rxBuffer com Limite Máximo:** Impedir estouro de memória no WebView travando o acúmulo de bytes residuais em `MAX_BUFFER = 1024` bytes.
+- [ ] **LittleFS Defensivo:** Alterar a montagem para `LittleFS.begin(false)` e só formatar em emergência. Avisar o App via JSON em caso de corrupção da Flash.
+- [ ] **try/catch no saveRecordes:** Proteger a gravação de recordes contra `QuotaExceededError`.
 
 ### 🎨 Novos Estilos de Arcos & Barras (Fase de Planejamento)
 - [x] **Criar página de visualização interativa:** Construir `bar_arc_preview.html` com 12 estilos e mockup integrado de cockpit.
 - [x] **Refinar o equalizador e cores:** Adaptar o Equalizador Cyber Wave para ser reativo e adicionar degradê cônico real no Arco Segmentado Sci-Fi.
-- [ ] **Criar Plano de Implementação:** Esboçar a integração de novos arcos e barras no código de produção (`renderers.js`, `editor.js`, `state.js`).
+- [ ] **Criar Plano de Integração:** Esboçar a integração de novos arcos e barras no código de produção.
 - [ ] **Codificar novos arcos/barras:** Implementar no app principal as opções selecionadas (Arco Crescente, Arco Cônico, Arco LED F1, Barra de Trapézios, Barra Chevron, Barra Cursor Laser, Barra Células de Fusão).
-
-### 🧪 Testes de Campo (Em andamento)
-- [x] **Validar Consumo físico em movimento:** PID `0x5E` vs cálculo estequiométrico Flex — qual é mais preciso?
-- [x] **Estabilidade do Bluetooth:** O app reconecta automaticamente após o carro desligar e a ESP reiniciar?
-- [x] **Slosh Mitigation em curvas:** O algoritmo mantém o ponteiro de combustível estável em curvas fortes?
 
 ### 🚗 Projeto Futuro — Expansão K-Line (Caline) & Handshake Estendido
 - [ ] **Despertar Elétrico (Linha K):** Sequências físicas de pulsação na GPIO configurada (Fast Init de 25ms LOW / 25ms HIGH e 5-Baud Init a 5 bps) no firmware.
@@ -112,22 +81,7 @@
 
 ### 🔧 Melhorias Pós-Teste (v6.3)
 - [ ] **Modo noturno automático:** Redução de brilho do canvas após 21h (via `unixTime` sincronizado pelo app).
-- [ ] **PIDs alternativos GM:** Investigar PIDs proprietários para MAP e Consumo caso os padrão `0x0B`/`0x5E` sempre usem fallback.
 - [ ] **Flash via `esptool` pelo Antigravity:** Gravar o `.bin` no ESP32 via USB sem nunca abrir o Arduino IDE.
-
-### 📱 Transição (v7.0 - Visão Futura)
-- [ ] **Widget de Força G Físico:** CAN sniffing da EBCM/ABS (ID `0x1F5`).
-- [ ] **Expansão de Sensores na Telemetria Binária:** Mapear e transmitir os 8 sensores restantes definidos na UI do App:
-  - Pressão de Óleo (`oilPress` — targetId 150)
-  - Pressão de Combustível (`fuelPress` — targetId 254/0a)
-  - Temp. Óleo (`oilTemp` — targetId 151/5c)
-  - Temp. Ar Admissão (`iat` — targetId 27/0f)
-  - Temp. Escape EGT (`egt` — targetId 152/153)
-  - Mistura AFR (`afr` — targetId 34)
-  - Sensor Lambda (`lambda` — targetId 30)
-  - Ponto de Ignição (`timing` — targetId 35/0e)
-- [ ] **Aumento do Frame Binário:** Redimensionar o frame da ESP32 de 42 bytes para acomodar os novos bytes dos sensores extras e atualizar o DataView do `transport.js`.
-- [ ] **APK de produção assinada:** Keystore próprio + `assembleRelease` para publicação.
 
 ### 🚗 Projeto Paralelo — Gol G1
 - [ ] Montar circuito do optocoplador para captura de RPM via bobina de ignição.

@@ -248,3 +248,25 @@ Esta sessão foi a mais importante e produtiva do projeto. Dividida em 3 fases d
 - **Injeção de Script Automática:** O script `sync.js` foi configurado para injetar `capacitor.js` dinamicamente no boot-file para evitar travamentos de dependências nativas.
 - **Bypass de PowerShell Execution Policy:** Executado o sync via CMD (`npx.cmd cap sync android`) para contornar restrições de permissões no Windows.
 - **Build de Release Debug v6.9:** Compilação finalizada via linha de comando local utilizando o compilador JDK JBR integrado ao Android Studio. O arquivo gerado foi arquivado em `APK/PulseDashV6.9.apk`.
+
+---
+
+## 🏆 A Grande Evolução — Telemetria Binária & Estabilização Geral (v7.0 - 2026-06-11)
+
+**O que foi:** Expandimos o protocolo de comunicação para telemetria binária pura de 51 bytes, habilitamos 8 novos sensores de performance ativa e eliminamos completamente gargalos de escrita na Flash e JIT no WebView. A nota do projeto chegou em **10/10** no Nível 1.
+
+**O que conquistamos:**
+- **8 Novos Sensores Ativos (Prioridade 2):** Pressão e Temp de Óleo, Pressão de Combustível, Temperatura de Escape (EGT), Mistura AFR, Sensor Lambda, Timing de Ignição e Temperatura de Admissão (IAT) integrados com decodificação no firmware e calibração no app.
+- **Criação da `fsTask` no Core 0 (Antilag de LittleFS):** Todas as escritas em disco da ESP32 (viagem de 5km, parada de motor, sensores não suportados, escrita de histórico no dia, e perfil do carro) foram movidas para a `fsTask` em segundo plano no Core 0, rodando sob mutex. Isso acabou em definitivo com as quedas bruscas de conexão e lag na telemetria.
+- **Mitigação de Fragmentação de Heap (ESP32 Uptime Máximo):** Refatoramos o salvamento do histórico de 7 dias na Flash de Strings Arduino para um buffer estático em RAM `char[1024]` e `snprintf`. Uptime ilimitado sem risco de Out of Memory.
+- **Overhead JIT Eliminado no WebView:** Fórmulas de conversão de dados agora usam JIT caching via Map local `formulaCache` no `transport.js`. O compilador `new Function` roda uma única vez por fórmula, poupando bateria e CPU do celular.
+- **Interface e Controles Seguros:**
+  - Delegação de cliques estáticos no Computador de Bordo (`trip.js`), reduzindo o vazamento de listeners e RAM no WebView.
+  - Cancelamento de timers de terminal DTC com `clearDtcTimers()`, evitando o encavalamento de textos e concorrência no DOM.
+  - Google DTC dinâmico por marca com `ST.car?.brand`.
+- **Compilação e Lançamento do APK v7.0:** O Gradle compilou a versão 7.0 (código 7) sob o JDK do Android Studio e salvamos o APK v7.0 no repositório.
+
+---
+
+**Links:** [[⚙️ Painel de Controle (Home)]] | [[📝 Lista de Tarefas]] | [[🔌 Sensores e Comunicação]]  
+**Tags:** #conquistas #historico #milestones #canbus #pulsedash #v70

@@ -1,4 +1,4 @@
-# 🚀 Firmware ESP32 — Arquitetura v6.4
+# 🚀 Firmware ESP32 — Arquitetura v7.0
 
 > **Arquivo:** `PulseDash/PulseDashESP_BT/PulseDashESP_BT.ino`  
 > **Plataforma:** ESP32 DevKit v1 (240 MHz Dual Core)  
@@ -7,9 +7,9 @@
 
 ---
 
-## 🎯 Objetivo (v6.4)
+## 🎯 Objetivo (v7.0)
 
-ESP32 como **Gateway CAN Bus → Bluetooth Classic**, lendo dados nativamente da rede CAN do Onix 2026 via driver TWAI e transmitindo JSON para o App Android via RFCOMM a 20Hz.
+ESP32 atuando como **Gateway CAN Bus ➔ Bluetooth Classic**, lendo dados em tempo real da rede CAN (11 ou 29-bit) via driver TWAI e transmitindo telemetria binária de 51 bytes para o App Android via SPP/RFCOMM a 20Hz.
 
 ---
 
@@ -18,99 +18,57 @@ ESP32 como **Gateway CAN Bus → Bluetooth Classic**, lendo dados nativamente da
 | Componente | Especificação | Status |
 |:---|:---|:---:|
 | MCU | ESP32 DevKit v1 (WROOM-32) | ✅ Em uso |
-| Transceiver CAN | **SN65HVD230** (plaquinha azul, 3.3V) | ✅ Em uso |
+| Transceiver CAN | **SN65HVD230** (3.3V) | ✅ Em uso |
 | Conector | OBD2 J1962 (16-pin macho) | ✅ Em uso |
 | TX CAN | GPIO 17 | ✅ |
 | RX CAN | GPIO 16 | ✅ |
-| GND | **GND do chassi (pinos 4/5 do OBD2)** | ⚠️ CRÍTICO |
+| GND | **GND do chassi (pino 4/5 do OBD2)** | ⚠️ CRÍTICO |
 
 ---
 
-## ⏱️ Scheduler Circular de 10 Slots (Core 0)
+## ⏱️ Scheduler Dinâmico de Polling (Core 0 — obdTask)
 
-Ciclo: **50ms (20Hz)**. A cada ciclo: RPM + Speed sempre + 1 sensor do slot atual.
+A `obdTask` roda no **Core 0** (prioridade 5) e gerencia a fila de requisições OBD2. O loop principal roda a cada 50ms (20Hz):
+- **Sensores Fixos:** RPM e Velocidade são consultados em todos os loops (skipCount = 0).
+- **Sensores Secundários:** O scheduler varre os contadores `skipCounter` dos sensores ativos e seleciona o que possui a maior taxa de atraso (`ratio = skipCounter / (skipCount + 1)`). Apenas **1 sensor secundário** é consultado por loop para manter o frame rate de 20Hz livre de atrasos de rede.
 
-```
-Slot 0 → Borboleta (0x11)          Slot 5 → MAF (0x10)
-Slot 1 → Carga (0x04)              Slot 6 → Pedal (0x49)
-Slot 2 → Pedal (0x49)              Slot 7 → Consumo (0x5E)
-Slot 3 → MAP/Boost (0x0B)          Slot 8 → Borboleta (0x11)
-Slot 4 → Borboleta (0x11)          Slot 9 → Sensor Lento (rotaciona 7 sensores)
-```
-
-**Slot 9 — Sensores Lentos (~0.28Hz cada):**
-```
-slowIndex 0 → Voltagem (0x42)
-slowIndex 1 → Temp. Água (0x05)
-slowIndex 2 → Catalisador (0x3C)
-slowIndex 3 → Temp. Ar (0x46)
-slowIndex 4 → Nível Combustível (0x2F)
-slowIndex 5 → Odômetro Trip (0x31)
-slowIndex 6 → Etanol % (0x52)
-```
-
-**Timeout por PID:** 12ms (evita que 3 leituras/ciclo excedam 50ms).  
-**Anti-starvation:** Substituiu o `if/else if` em cadeia que bloqueava sensores lentos.
+**Controle de timeouts e falhas:**
+- Timeout de leitura CAN de 25ms por PID.
+- Se o sensor falhar consecutivamente: 5 falhas ➔ cooldown de 30 segundos; 50 falhas ➔ desativação permanente da sessão e gravação em `/unsupported.dat` no LittleFS.
+- Sensores já desativados em arquivo na Flash sofrem apenas 1 tentativa rápida no boot e são desativados de imediato caso falhem.
 
 ---
 
-## 📡 Bluetooth
+## ⚙️ Arquitetura Assíncrona Antilag (Core 0 — fsTask)
 
-| Parâmetro | Valor |
-|:---|:---|
-| Biblioteca | `BluetoothSerial.h` |
-| Nome | `PulseScan` |
-| Formato | JSON linha por linha via `SerialBT.println()` |
-| Frequência TX | 20Hz (loop Core 1) |
-
-**JSON transmitido:**
-```json
-{"rpm":1450,"speed":30,"throttle":24,"pedal":20,"load":35,"boost":95.2,"coolant":87,"catalyst":350,"ambient":28,"fuelLevel":47,"ethanol":72,"voltage":13.8,"fuelRate":3.2,"tripDist":28641,"maf":12.5,"obd_state":4}
-```
-
-> ⚠️ `tripDist` = km totais do odômetro do carro (PID 0x31), **não** km da viagem atual. O app calcula o delta subtraindo `initialOdometer`.
+Para evitar quedas de conexão ou lag no polling do CAN, as escritas em disco na Flash do LittleFS foram delegadas para uma task secundária dedicada:
+- **`fsTask` (Core 0, prioridade 1):** Roda em loop infinito monitorando flags de sinalização. Quando uma flag é ativada, a task realiza a gravação em disco correspondente.
+- **Flags e buffers de transferência:**
+  - `saveTripPending`: Grava o backup de viagem diário `/trip_current.json`.
+  - `saveUnsupportedPending`: Grava a lista de sensores ausentes `/unsupported.dat`.
+  - `saveHistPending`: Grava o histórico de 7 dias `/trip_hist.json`.
+  - `saveConfigPending`: Grava o arquivo de configuração de perfil `/car_profile.cfg`.
+- **Prevenção de Fragmentação de RAM:** A montagem do histórico de 7 dias utiliza exclusivamente arrays de caracteres de tamanho fixo em stack (`char histBuffer[1024]`) com manipulação clássica de strings C (`snprintf`, `strcat`, `memmove`), evitando vazamentos e instabilidade do heap.
 
 ---
 
-## 🔗 Handshake OBD2
+## 📡 Bluetooth Classic (Core 1 — loop)
 
-```
-1. Tester Present (0x3E 0x00) → aguarda 100ms
-2. Solicita PIDs suportados (PID 0x00)
-3. Aguarda resposta por 800ms
-4. 10 tentativas → reinicia driver se falhar
-5. Tester Present a cada 2s (mantém sessão ativa)
-```
+O loop do Arduino roda no **Core 1** e gerencia o rádio Bluetooth Classic. O rádio aguarda conexões sob o nome `PULSESCAN`.
+- Transmite frames de **51 bytes** a 20Hz.
+- O processamento de comandos recebidos (como `"sync"`, `"price"`, `"CFG;"`) é executado imediatamente no Core 1. A escrita das configs no LittleFS é enviada à `fsTask` no Core 0 de forma assíncrona.
 
----
-
-## 💻 Compilação via arduino-cli
-
-```powershell
-# Caminho do arduino-cli:
-scratch/bin/arduino-cli.exe
-
-# Compilar:
-.\bin\arduino-cli.exe compile --fqbn esp32:esp32:esp32 "PulseDash\PulseDashESP_BT" --output-dir "APK\Firmware"
-
-# Resultado: 85% flash, 12% RAM
-# Binário: APK/Firmware/PulseDashESP_BT.ino.bin
-```
-
----
-
-## ⚠️ Desafios Técnicos Resolvidos
-
-| Problema | Solução |
-|:---|:---|
-| ECU ignorava frames 11-bit | Usar Extended 29-bit (`0x18DB33F1`) |
-| Bus-Off imediato | Curto físico nas pistas do PCB do conector OBD2 — raspagem manual |
-| Sem resposta da ECU | Faltava GND do chassi (pinos 4/5 OBD2) |
-| Starvation de sensores | Substituído if/else if por scheduler circular 10 slots |
-| Lag de ciclo (>50ms) | Timeout de PID reduzido de 25ms para 12ms |
-| MAP/Consumo congelados | Fallback recalcula via throttle+load+RPM a cada ciclo |
+**Layout do Frame Binário de 51 bytes:**
+- `[0..3]`: Headers de sincronização (`0x44, 0x33, 0x22, 0x11`)
+- `[4]`: Tipo de pacote (`0x01` = Telemetria)
+- `[5..22]`: RPM, Speed, TPS, Pedal, Load, FuelRate, Boost, Coolant, Catalyst, Ambient, Ethanol, Volt, FuelLevel
+- `[23..38]`: Dados de viagem integrados na ESP32 (TripDist, TripFuel, TripTimeTot, TripTimeDri)
+- `[39..47]`: oilPress, fuelPress, oilTemp, iat, egt (2 bytes), afr, lambda, timing
+- `[48]`: obd_state
+- `[49]`: loopMs
+- `[50]`: Checksum (Soma simples mod 256 dos 50 bytes anteriores)
 
 ---
 
 **Links:** [[⚙️ Painel de Controle (Home)]] | [[🔌 Sensores e Comunicação]] | [[🔧 Hardware e Pinagem]]  
-**Tags:** #firmware #esp32 #freertos #twai #canbus #bluetooth #scheduler #v64
+**Tags:** #firmware #esp32 #freertos #twai #canbus #bluetooth #scheduler #v70 #astask

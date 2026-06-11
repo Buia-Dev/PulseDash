@@ -1,6 +1,6 @@
 # 📱 App Android (APK)
 
-> **Versão:** v6.9 | **Status:** ✅ COMPILADO E TESTADO  
+> **Versão:** v7.0 | **Status:** ✅ COMPILADO E TESTADO  
 > **Framework:** Capacitor 6 + cordova-plugin-bluetooth-serial  
 > **Referência:** [[⚙️ Painel de Controle (Home)]] | [[🔌 Sensores e Comunicação]]
 
@@ -10,18 +10,19 @@
 
 ```
 PulseDashAPP/
-├── www/                    ← Assets web copiados de PulseDash/PulseDashESP/data/
+├── www/                    ← Assets web copiados de PulseDash/PulseDash/data/
 │   ├── index.html          ← HTML principal (handler de erros, cpanel, modais)
 │   ├── style.css           ← Estilos (GPU compositing, fontes +2px vs v6.0)
 │   └── js/
-│       ├── state.js        ← Sensores, config default, SMOOTH_K
-│       ├── main.js         ← Loop 60fps, OBD overlay, variáveis globais de freq
-│       ├── renderers.js    ← Desenho Canvas (Lazy Render ativo)
-│       ├── editor.js       ← Editor de layout drag-and-drop, applyConfig robusto
-│       ├── utils.js        ← Utilidades puras (toast, utils math) - Fim do import circular
-│       ├── transport.js    ← Bluetooth Serial nativo (initBluetoothSerial, subscribe)
+│       ├── state.js        ← Sensores, config default, SMOOTH_K, SENSOR_MAP_BY_ID
+│       ├── main.js         ← Loop 60fps, OBD overlay, terminal DTC auto-clear
+│       ├── renderers.js    ← Desenho Canvas (Lazy Render ativo), 16 agulhas
+│       ├── editor.js       ← Editor de layout drag-and-drop, optgroup
+│       ├── utils.js        ← Funções utilitárias (toast) - Sem dependência circular
+│       ├── transport.js    ← Bluetooth Serial nativo (JIT cache de formulas via Map)
 │       ├── perf.js         ← Cronômetro 0-100, Top 5, histórico de performance
-│       └── trip.js         ← Computador de bordo (distância, combustível, tempo)
+│       ├── profiles_db.js  ← Banco de dados com os 18 perfis do RealDash
+│       └── trip.js         ← Computador de bordo (event delegation no histórico)
 ├── android/                ← Projeto Android Studio (Gradle)
 └── capacitor.config.json   ← Configuração do Capacitor
 ```
@@ -43,11 +44,11 @@ npx.cmd cap sync android
 $env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
 cd android; .\gradlew.bat assembleDebug
 
-# 4. Copiar APK para a pasta de releases com a tag v6.9
-Copy-Item "app\build\outputs\apk\debug\app-debug.apk" "..\APK\PulseDashV6.9.apk" -Force
+# 4. Copiar APK para a pasta de releases com a tag v7.0
+Copy-Item "app\build\outputs\apk\debug\app-debug.apk" "..\APK\PulseDashV7.0.apk" -Force
 ```
 
-**APK de Release:** `C:\Users\Buia\.gemini\antigravity\scratch\PulseDash\APK\PulseDashV6.9.apk`
+**APK de Release:** `C:\Users\Buia\.gemini\antigravity\scratch\PulseDash\APK\PulseDashV7.0.apk`
 
 ---
 
@@ -57,15 +58,18 @@ Copy-Item "app\build\outputs\apk\debug\app-debug.apk" "..\APK\PulseDashV6.9.apk"
 |:---|:---|
 | Protocolo | Bluetooth Classic (SPP / RFCOMM) |
 | Nome do dispositivo ESP32 | `PULSESCAN` |
-| Formato dos dados | JSON compactado, 1 linha por pacote (`\n`) |
-| Frequência de transmissão | ~33Hz (30ms entre pacotes) |
-| Delimitador | `\n` (subscribe via `bluetoothSerial.subscribe('\n', ...)`) |
-| Auto-reconexão | Sim — `setTimeout(initBluetoothSerial, 4000~6000)` |
+| Formato dos dados | Stream binário cru de **51 bytes** com checksum (20Hz) |
+| Auto-reconexão | Sim — Backoff exponencial dinâmico de 4s a 30s |
 
-**Exemplo de pacote recebido (v6.2):**
-```json
-{"rpm":1450,"speed":0,"throttle":24,"pedal":20,"load":15,"fuelRate":1.2,"boost":35.2,"coolant":87,"catalyst":420,"ambient":28,"ethanol":72,"voltage":13.8,"fuelLevel":47,"transTemp":72,"oilPres":2.3,"oilTemp":88,"tripDist":0,"tripFuel":0.000,"tripTimeTot":0,"tripTimeDri":0,"obd_state":4}
-```
+**Estrutura do pacote de telemetria binária (51 bytes):**
+- `[0..3]`: Headers de sincronização (`0x44, 0x33, 0x22, 0x11`)
+- `[4]`: Tipo de pacote (`0x01` = Telemetria)
+- `[5..22]`: P1 Sensores (RPM, Speed, TPS, Pedal, Load, FuelRate, Boost, Coolant, Catalyst, Ambient, Ethanol, Volt, FuelLevel)
+- `[23..38]`: Dados de viagem (TripDist, TripFuel, TripTimeTot, TripTimeDri)
+- `[39..47]`: P2 Sensores (oilPress, fuelPress, oilTemp, iat, egt (2 bytes), afr, lambda, timing)
+- `[48]`: Estado da conexão OBD2 (`obd_state`)
+- `[49]`: Duração do loop CAN (`loopMs`)
+- `[50]`: Checksum (Soma simples mod 256 dos 50 bytes anteriores)
 
 ---
 
@@ -75,54 +79,44 @@ Copy-Item "app\build\outputs\apk\debug\app-debug.apk" "..\APK\PulseDashV6.9.apk"
 |:---|:---|:---|
 | FPS | **60fps** | `requestAnimationFrame` sem throttle |
 | GPU compositing | `will-change: transform` | Scroll de páginas na GPU |
-| Smooth K — Carga | `0.12` | Inércia suave (era 1.0 = saltos) |
-| Smooth K — RPM/Vel | `0.10` | Resposta rápida |
-| Smooth K — Temps | `0.30` | Sensores lentos, sem oscilar |
+| JIT Formula Cache | **Map Local** | Cache em lookups das funções compiladas |
+| Lazy Render | **Ativo** | Só repinta se variação do sensor for `> 0.05` |
 | Fontes | **+2px** vs v6.0 | Melhor legibilidade no celular |
 
 ---
 
 ## 🐛 Bugs Corrigidos
 
-### v6.0
-| Bug | Sintoma | Fix |
-|:---|:---|:---|
-| MAP travado | Ponteiro parado em 193 kPa | Grava `-999` no timeout → fallback recalcula |
-| Consumo travado | Sempre 1.0 L/h | Fallback estequiométrico Flex (MAF + Etanol) |
-| Lag intermitente | Painel engasgava a cada ~1s | Timeout PID + 30fps cap |
-| Linha 1px no topo | Borda piscando no topo da tela | `#ov-bar::after` removido |
-| Carga com saltos | Agulha pulava em vez de deslizar | `SMOOTH_K.load: 1.0 → 0.12` |
-| Starvation | Sensores lentos nunca eram lidos | Scheduler circular 10 slots |
-
-### v6.2
-| Bug | Sintoma | Fix |
-|:---|:---|:---|
-| Tela vermelha ao conectar BT | `Script error. Linha: 0:0` | Filtro no `window.onerror` ignora falsos positivos ES6 |
-| Menu OBD crashava | `_freqHz is not defined` | Declaração das 4 variáveis globais no topo do `main.js` |
-| Relógios duplicavam | Girar o celular dobrava os widgets | `swapOrientation` limpa camadas específicas |
-| Cores dos arcos não salvavam | Reset de cor ao salvar | `applyConfig` ignora inputs `display:none` |
-| Botão ↔ sumiu | Sem forma de trocar lado do editor | Restaurado no cabeçalho do `cpanel` |
-
 ### v6.3 / v6.4
 | Bug | Sintoma | Fix |
 |:---|:---|:---|
-| Thermal Throttling | Celular superaquecia em minutos de uso | Remoção de `ctx.shadowBlur` (gargalo de GPU sem aceleração) e adição de Lazy Render (`abs(val - last) > 0.05`). |
-| Silent Boot Crash | App travava de forma randômica logo na inicialização e o erro no console era mudo. | Extração de módulo circular. `main`, `trip` e `transport` referenciam `utils.js` agora para o `toast()`. |
+| Thermal Throttling | Celular superaquecia em minutos de uso | Remoção de `ctx.shadowBlur` (gargalo de GPU sem aceleração) e adição de Lazy Render. |
+| Silent Boot Crash | App travava de forma randômica logo na inicialização | Extração de módulo circular. `main`, `trip` e `transport` referenciam `utils.js`. |
 | Falha ao salvar imagem custom | Nenhuma mensagem quando a base64 não cabia no localStorage | Adicionado `alert()` interceptando `QuotaExceededError`. |
 | Widget não apagava (Ghosting) | Alterar o sensor no editor mantinha a agulha velha travada no visor | Limpeza forçada de `w._sv` e `w._lastDrawS` no `applyConfig()`. |
 
 ### v6.9 (Fase de Agulhas e Release)
 | Bug / Feature | Sintoma | Fix |
 |:---|:---|:---|
-| Ponteiros de ponta pequenos | Setas/halos eram difíceis de enxergar mesmo em escalas maiores | Aplicado ganho proporcional de escala de **35%** (`sf *= 1.35`) por padrão no renderizador de agulhas. |
-| Agulhas bagunçadas no editor | Lista de 16 agulhas confusa e sem ordenação | Criado agrupamento dinâmico usando a tag `<optgroup>` dividindo-as em: *Cor Variável*, *Cor Fixa* e *Pontas*. |
-| Bloqueio ExecutionPolicy Windows | Erro ao rodar `npx cap sync android` | Contornado executando via CMD com `npx.cmd cap sync android`. |
+| Ponteiros de ponta pequenos | Setas/halos eram difíceis de enxergar mesmo em escalas maiores | Aplicado ganho de escala de **35%** (`sf *= 1.35`) no renderizador de agulhas. |
+| Agulhas bagunçadas no editor | Lista de 16 agulhas confusa e sem ordenação | Criado agrupamento dinâmico usando a tag `<optgroup>` (*Cor Variável*, *Cor Fixa*, *Pontas*). |
+| Bloqueio ExecutionPolicy | Erro ao rodar `npx cap sync android` | Contornado executando via CMD com `npx.cmd cap sync android`. |
+
+### v7.0 (Fase de Estabilização e JIT Cache)
+| Bug / Feature | Sintoma | Fix |
+|:---|:---|:---|
+| Overhead JIT de Fórmulas | 420 compilações de strings/s travavam o WebView | Declarado `formulaCache` como `Map` para reutilizar as funções compiladas. |
+| Lag de Gravação LittleFS | Gravação síncrona na Flash causava lag de até 80ms no bluetooth | Criada `fsTask` no Core 0 do ESP32 para gravações assíncronas em background. |
+| Memory Leak no Histórico | Listeners de cliques no loop do histórico travavam o WebView | Implementada delegação de cliques estáticos no container pai `#trip-hist-list`. |
+| Concorrência no DTC Console | Fechar e abrir o terminal misturava/encavalava as strings | Timers e resolves registrados e limpos via `clearDtcTimers()`. |
+| Colisão de PIDs | Sensor de pressão de óleo lia dados de temp de óleo | PID padrão do `oilPress` remapeado de `"5c"` para `"00"`. |
+| Google DTC Fixo | Pesquisa de erros sempre usava a marca Fiat | Substituído por busca dinâmica baseada na marca do perfil (`ST.car?.brand`). |
 
 ---
 
 ## 📲 Instalação no Celular
 
-1. Transferir `PulseDash_v6.2.apk` para o celular
+1. Transferir `PulseDashV7.0.apk` para o celular
 2. Permitir "Instalar de fontes desconhecidas" nas configurações
 3. Instalar o APK
 4. Parear o celular com o ESP32 via Bluetooth (nome: `PULSESCAN`)
@@ -132,4 +126,4 @@ Copy-Item "app\build\outputs\apk\debug\app-debug.apk" "..\APK\PulseDashV6.9.apk"
 ---
 
 **Links:** [[⚙️ Painel de Controle (Home)]] | [[🔌 Sensores e Comunicação]] | [[🗂️ Estrutura de Arquivos]]  
-**Tags:** #android #apk #capacitor #bluetooth #canvas #pulsedash #app
+**Tags:** #android #apk #capacitor #bluetooth #canvas #pulsedash #app #v70
