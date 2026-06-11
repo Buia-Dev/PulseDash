@@ -291,6 +291,16 @@ function parseBinaryTelemetry(frame) {
     loopMs
   };
   
+  // Se a conexão OBD2 com o carro não estiver ONLINE (estado 4), não atualizamos os sensores da ECU
+  if (obd_state !== 4) {
+    const ecuSensors = [
+      'rpm', 'speed', 'throttle', 'pedal', 'load', 'fuelRate', 'boost', 
+      'coolant', 'catalyst', 'ambient', 'ethanol', 'voltage', 'fuelLevel', 
+      'oilPress', 'fuelPress', 'oilTemp', 'iat', 'egt', 'afr', 'lambda', 'timing'
+    ];
+    ecuSensors.forEach(key => delete telemetry[key]);
+  }
+  
   processTelemetry(telemetry);
 }
 
