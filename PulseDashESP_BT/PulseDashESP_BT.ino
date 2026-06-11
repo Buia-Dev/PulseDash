@@ -1370,16 +1370,16 @@ void loop() {
     buf[13] = (boostVal >> 8) & 0xFF;
     buf[14] = boostVal & 0xFF;
     
-    // Coolant / Água (int8)
-    buf[15] = (int8_t)s.coolant;
+    // Coolant / Água (uint8_t, evita overflow em >87°C)
+    buf[15] = (uint8_t)s.coolant;
     
     // Catalisador (int16)
     int16_t catVal = (int16_t)s.catalyst;
     buf[16] = (catVal >> 8) & 0xFF;
     buf[17] = catVal & 0xFF;
     
-    // Temp. Ambiente (int8)
-    buf[18] = (int8_t)s.ambientTemp;
+    // Temp. Ambiente (uint8_t)
+    buf[18] = (uint8_t)s.ambientTemp;
     
     // Etanol % (uint8)
     buf[19] = (uint8_t)(s.ethanol < 0 ? 0 : s.ethanol);
@@ -1412,11 +1412,11 @@ void loop() {
     // Fuel Press (uint8, valor cru)
     buf[40] = (uint8_t)(s.fuelPress < 0 ? 0 : (s.fuelPress > 255 ? 255 : s.fuelPress));
     
-    // Oil Temp (int8)
-    buf[41] = (int8_t)s.oilTemp;
+    // Oil Temp (uint8_t, evita overflow)
+    buf[41] = (uint8_t)s.oilTemp;
     
-    // IAT (int8)
-    buf[42] = (int8_t)s.iat;
+    // IAT (uint8_t, evita overflow)
+    buf[42] = (uint8_t)s.iat;
     
     // EGT (uint16_t, 2 bytes, Big Endian)
     uint16_t egtVal = (uint16_t)(s.egt < 0 ? 0 : s.egt);

@@ -209,9 +209,9 @@ function parseBinaryTelemetry(frame) {
   const rawLoad = view.getUint8(10);
   const rawFuelRate = view.getUint16(11, false);
   const rawBoost = view.getInt16(13, false);
-  const rawCoolant = view.getInt8(15);
+  const rawCoolant = view.getUint8(15); // Alterado para sem sinal (evita overflow em >87°C)
   const rawCatalyst = view.getInt16(16, false);
-  const rawAmbient = view.getInt8(18);
+  const rawAmbient = view.getUint8(18); // Alterado para sem sinal
   const rawEthanol = view.getUint8(19);
   const rawVoltage = view.getUint16(20, false);
   const rawFuelLevel = view.getUint8(22);
@@ -219,8 +219,8 @@ function parseBinaryTelemetry(frame) {
   // Novos 8 sensores de Prioridade 2
   const rawOilPress = view.getUint8(39);
   const rawFuelPress = view.getUint8(40);
-  const rawOilTemp = view.getInt8(41);
-  const rawIat = view.getInt8(42);
+  const rawOilTemp = view.getUint8(41); // Alterado para sem sinal (evita overflow)
+  const rawIat = view.getUint8(42); // Alterado para sem sinal (evita overflow)
   const rawEgt = view.getUint16(43, false); // Big Endian para 2 bytes
   const rawAfr = view.getUint8(45);
   const rawLambda = view.getUint8(46);
@@ -461,13 +461,21 @@ export function compileConfigString(car) {
     let matchedCmd = profile.commands.find(c => c.targetId === s.targetId);
     if (matchedCmd) {
       pid = matchedCmd.send.replace(/^01/, "");
-      len = matchedCmd.conversion ? (matchedCmd.conversion.includes("B1") || matchedCmd.conversion.includes("B0*256") ? 2 : 1) : s.len;
+      if (pid.toLowerCase() === "atrv") pid = "42"; // atrv -> PID 42 (Voltage)
+      
+      // Se o sensor original s.len é 2 (ex: RPM, FuelRate, Catalyst, Voltage), mantém 2 bytes
+      if (s.len === 2) {
+        len = 2;
+      } else {
+        len = matchedCmd.conversion ? (matchedCmd.conversion.includes("B1") || matchedCmd.conversion.includes("B0*256") ? 2 : 1) : s.len;
+      }
       skip = matchedCmd.skipCount !== undefined ? matchedCmd.skipCount : s.skip;
     } else {
       // Procura em comandos que contém valores aninhados
       let parentCmd = profile.commands.find(c => c.values && c.values.some(v => v.targetId === s.targetId));
       if (parentCmd) {
         pid = parentCmd.send;
+        if (pid.toLowerCase() === "atrv") pid = "42";
         skip = parentCmd.skipCount !== undefined ? parentCmd.skipCount : s.skip;
         
         const nestedVal = parentCmd.values.find(v => v.targetId === s.targetId);
@@ -476,7 +484,11 @@ export function compileConfigString(car) {
         if (match) {
           srcOffset = parseInt(match[1], 10);
         }
-        len = conv.includes("*256") ? 2 : 1;
+        if (s.len === 2 || conv.includes("*256")) {
+          len = 2;
+        } else {
+          len = 1;
+        }
       }
     }
     
