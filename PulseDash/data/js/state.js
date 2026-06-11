@@ -2,6 +2,7 @@
 
 const ST = {
   pg: 0, editor: false, sel: null, moving: false, movingBg: false, cfg: null,
+  car: { brand: 'chevrolet', model: 'Onix 2026', engine: '1.0', aspiration: 'turbo', fuel: 'flex', tank: 44 },
   dados: {}, smooth: {},
   cvs: {}, wakeLock: null, imgList: [],
   fetching: false,

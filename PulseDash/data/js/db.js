@@ -1,4 +1,5 @@
 'use strict';
+import { toast } from './utils.js';
 
 const DB_NAME = 'PulseDashDB';
 const STORE_NAME = 'custom_images';
@@ -32,14 +33,35 @@ export function initDB() {
 export function saveCustomImage(id, name, base64Data) {
   return new Promise((resolve, reject) => {
     if (!db) return reject('DB not initialized');
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    const store = tx.objectStore(STORE_NAME);
-    
-    const obj = { id, name, data: base64Data, ts: Date.now() };
-    const request = store.put(obj);
-    
-    request.onsuccess = () => resolve(obj);
-    request.onerror = (e) => reject(e);
+    try {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      
+      tx.onabort = (e) => {
+        const error = e.target.error;
+        if (error && (error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED')) {
+          toast('⚠️ MEMÓRIA CHEIA! APAGUE IMAGENS ANTIGAS');
+        }
+        reject(error || e);
+      };
+      
+      const store = tx.objectStore(STORE_NAME);
+      const obj = { id, name, data: base64Data, ts: Date.now() };
+      const request = store.put(obj);
+      
+      request.onsuccess = () => resolve(obj);
+      request.onerror = (e) => {
+        const error = e.target.error;
+        if (error && (error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED')) {
+          toast('⚠️ MEMÓRIA CHEIA! APAGUE IMAGENS ANTIGAS');
+        }
+        reject(e);
+      };
+    } catch (err) {
+      if (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
+        toast('⚠️ MEMÓRIA CHEIA! APAGUE IMAGENS ANTIGAS');
+      }
+      reject(err);
+    }
   });
 }
 

@@ -167,49 +167,7 @@ export function renderTripHistoryList(dataOverride = null) {
 
   list.innerHTML = html;
 
-  // Clique só nos dias (não no resumo)
-  list.querySelectorAll('.trip-hist-item:not(.trip-hist-summary)').forEach(el => {
-    const handleSelect = (evt) => {
-      evt.preventDefault();
-      evt.stopPropagation();
-
-      const idx = parseInt(el.dataset.idx);
-      const item = sorted[idx];
-      if (item) {
-        TRIP.viewingHistory = true;
-        const dist = item.dist || 0;
-        const fuel = item.fuel || 0;
-        const tTot = item.ttot || 0;
-        const tDri = item.tdri || 0;
-        const avgSpeed = tDri > 0 ? (dist / (tDri / 3600.0)) : 0;
-        const avgC = fuel > 0 ? (dist / fuel) : 0;
-        const histP = (item.price !== undefined && item.price > 0) ? item.price : TRIP.price;
-        const costVal = (histP !== null && histP > 0) ? (fuel * histP) : 0;
-
-        ST.dados.tripDistance = dist;
-        ST.dados.tripFuel = fuel;
-        ST.dados.tripAvgSpeed = avgSpeed;
-        ST.dados.tripAvgCons = avgC;
-        ST.dados.tripCost = costVal;
-        ST.dados.tripTimeTotal = tTot / 60.0;
-
-        const utcEpoch = item.ts + (new Date().getTimezoneOffset() * 60);
-        const d = new Date(utcEpoch * 1000);
-        const dayStr = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-
-        const elTitle = document.getElementById('trip-main-title');
-        if (elTitle) elTitle.textContent = `HISTÓRICO: DIA ${dayStr}`;
-
-        updateTripUI();
-
-        const popHist = document.getElementById('trip-hist-popup');
-        if (popHist) popHist.style.display = 'none';
-      }
-    };
-
-    el.addEventListener('click', handleSelect);
-    el.addEventListener('touchend', handleSelect);
-  });
+  // A vinculação de cliques foi delegada para o listener estático único configurado em initTrip()
 }
 
 // Expor para o main.js poder chamar na abertura do popup
@@ -278,6 +236,53 @@ export function initTrip() {
   setInterval(() => {
     updateTripLogic(0.5); // dt fixo de 0.5s
   }, 500);
+
+  // Delegação estática de cliques no histórico (evita vazamentos e duplicações)
+  document.getElementById('trip-hist-list')?.addEventListener('click', (e) => {
+    const itemEl = e.target.closest('.trip-hist-item:not(.trip-hist-summary)');
+    if (!itemEl) return;
+    
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const idx = parseInt(itemEl.dataset.idx, 10);
+    const sourceData = TRIP.histData || tripHistory;
+    if (!sourceData || idx < 0 || idx >= sourceData.length) return;
+    
+    const sorted = [...sourceData].sort((a, b) => b.ts - a.ts);
+    const item = sorted[idx];
+    
+    if (item) {
+      TRIP.viewingHistory = true;
+      const dist = item.dist || 0;
+      const fuel = item.fuel || 0;
+      const tTot = item.ttot || 0;
+      const tDri = item.tdri || 0;
+      const avgSpeed = tDri > 0 ? (dist / (tDri / 3600.0)) : 0;
+      const avgCons = fuel > 0 ? (dist / fuel) : 0;
+      const histP = (item.price !== undefined && item.price > 0) ? item.price : TRIP.price;
+      const costVal = (histP !== null && histP > 0) ? (fuel * histP) : 0;
+
+      ST.dados.tripDistance = dist;
+      ST.dados.tripFuel = fuel;
+      ST.dados.tripAvgSpeed = avgSpeed;
+      ST.dados.tripAvgCons = avgCons;
+      ST.dados.tripCost = costVal;
+      ST.dados.tripTimeTotal = tTot / 60.0;
+
+      const utcEpoch = item.ts + (new Date().getTimezoneOffset() * 60);
+      const d = new Date(utcEpoch * 1000);
+      const dayStr = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+
+      const elTitle = document.getElementById('trip-main-title');
+      if (elTitle) elTitle.textContent = `HISTÓRICO: DIA ${dayStr}`;
+
+      updateTripUI();
+
+      const popHist = document.getElementById('trip-hist-popup');
+      if (popHist) popHist.style.display = 'none';
+    }
+  });
 
   // Resetar o histórico ao fechar
   document.getElementById('btn-trip-close')?.addEventListener('click', () => {
@@ -541,7 +546,7 @@ export function resetTripA() {
   prevTripFuel = TRIP.fuelVolume;
   prevTripTimeTotal = TRIP.timeTotal;
   prevTripTimeDriving = TRIP.timeDriving;
-  prevTripTimeStopped = TRIP.timeStopped;
+        TRIP.timeStopped = TRIP.timeStopped;
 
   saveTrip();
   updateTripUI();
@@ -561,56 +566,52 @@ document.addEventListener('trip_hist_data', (e) => {
   }
 
   // Acumula no app + salva + re-render (com resumo no topo)
+  TRIP.histData = data;
   mergeAndSaveHistory(data);
   renderTripHistoryList(tripHistory);
-
-  // Adiciona cliques para carregar no "Time Machine" de widgets
-  list.querySelectorAll('.trip-hist-item').forEach(el => {
-    const handleSelect = (evt) => {
-      evt.preventDefault();
-      evt.stopPropagation();
-      
-      const idx = parseInt(el.dataset.idx);
-      const item = data[idx];
-      if (item) {
-        TRIP.viewingHistory = true;
-        const dist = item.dist || 0;
-        const fuel = item.fuel || 0;
-        const tTot = item.ttot || 0;
-        const tDri = item.tdri || 0;
-        const avgSpeed = tDri > 0 ? (dist / (tDri / 3600.0)) : 0;
-        const avgCons = fuel > 0 ? (dist / fuel) : 0;
-        // Usa o preço gravado no item, ou fallback para o atual do App
-        const histPrice = (item.price !== undefined && item.price > 0) ? item.price : TRIP.price;
-        const costVal = (histPrice !== null && histPrice > 0) ? (fuel * histPrice) : 0;
-
-        // Injeta os dados históricos nos widgets de dashboard
-        ST.dados.tripDistance = dist;
-        ST.dados.tripFuel = fuel;
-        ST.dados.tripAvgSpeed = avgSpeed;
-        ST.dados.tripAvgCons = avgCons;
-        ST.dados.tripCost = costVal;
-        ST.dados.tripTimeTotal = tTot / 60.0;
-
-        const utcEpoch = item.ts + (new Date().getTimezoneOffset() * 60);
-        const d = new Date(utcEpoch * 1000);
-        const dayStr = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-        
-        // Altera o título da aba
-        const elTitle = document.getElementById('trip-main-title');
-        if (elTitle) elTitle.textContent = `HISTÓRICO: DIA ${dayStr}`;
-
-        // Atualiza os valores visuais no Diário
-        updateTripUI();
-        
-        // Fecha APENAS o modal de histórico para revelar a aba Diário
-        const popHist = document.getElementById('trip-hist-popup');
-        if (popHist) popHist.style.display = 'none';
-      }
-    };
-
-    el.addEventListener('click', handleSelect);
-    el.addEventListener('touchend', handleSelect);
-  });
 });
 
+// Listener estático para delegar o clique dos itens do histórico
+document.addEventListener('click', (evt) => {
+  const el = evt.target.closest('.trip-hist-item');
+  if (!el) return;
+
+  const idx = parseInt(el.dataset.idx);
+  const item = TRIP.histData ? TRIP.histData[idx] : null;
+
+  if (item) {
+    TRIP.viewingHistory = true;
+    const dist = item.dist || 0;
+    const fuel = item.fuel || 0;
+    const tTot = item.ttot || 0;
+    const tDri = item.tdri || 0;
+    const avgSpeed = tDri > 0 ? (dist / (tDri / 3600.0)) : 0;
+    const avgCons = fuel > 0 ? (dist / fuel) : 0;
+    // Usa o preço gravado no item, ou fallback para o atual do App
+    const histPrice = (item.price !== undefined && item.price > 0) ? item.price : TRIP.price;
+    const costVal = (histPrice !== null && histPrice > 0) ? (fuel * histPrice) : 0;
+
+    // Injeta os dados históricos nos widgets de dashboard
+    ST.dados.tripDistance = dist;
+    ST.dados.tripFuel = fuel;
+    ST.dados.tripAvgSpeed = avgSpeed;
+    ST.dados.tripAvgCons = avgCons;
+    ST.dados.tripCost = costVal;
+    ST.dados.tripTimeTotal = tTot / 60.0;
+
+    const utcEpoch = item.ts + (new Date().getTimezoneOffset() * 60);
+    const d = new Date(utcEpoch * 1000);
+    const dayStr = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    
+    // Altera o título da aba
+    const elTitle = document.getElementById('trip-main-title');
+    if (elTitle) elTitle.textContent = `HISTÓRICO: DIA ${dayStr}`;
+
+    // Atualiza os valores visuais no Diário
+    updateTripUI();
+    
+    // Fecha APENAS o modal de histórico para revelar a aba Diário
+    const popHist = document.getElementById('trip-hist-popup');
+    if (popHist) popHist.style.display = 'none';
+  }
+});

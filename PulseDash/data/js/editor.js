@@ -12,6 +12,8 @@ function mkWidget(w,pgIdx){
 
   w.pg = pgIdx;
   delete w._lastDrawS; // Força re-renderização ao recriar o canvas
+  delete w._cachedGrad; // Limpa o gradiente obsoleto do canvas anterior
+  delete w._cachedGradKey;
   const layer=document.getElementById(`wl-${pgIdx}`); if(!layer) return;
   const div=document.createElement('div');
   div.id=`W-${w.id}`;
@@ -34,7 +36,10 @@ function mkWidget(w,pgIdx){
     if (effCurv >= 360) effCurv = 360;
     const isV=( (w.direction==='v'||w.rDir==='v') && effCurv===0);
     if(effCurv === 0) {
-      if(w.tipo==='barra_pura') { wW=isV?Math.max(pad,w.thickness):w.tamanho+pad; wH=isV?w.tamanho+pad:Math.max(pad,w.thickness); }
+      if(w.tipo==='barra_pura') { 
+        wW = isV ? Math.max(pad, w.thickness || 10) : w.tamanho + pad; 
+        wH = isV ? w.tamanho + pad : Math.max(pad, w.thickness || 10); 
+      }
       else { wW = isV ? 100 : w.tamanho + 40; wH = isV ? w.tamanho + 40 : 100; }
     } else {
       const effCurvRad = effCurv * Math.PI / 180;
@@ -271,6 +276,8 @@ function separarWidget(wid, pgIdx) {
 
 function openBgMenu(){ 
   const pg=ST.cfg.orientations[ST.orientation][ST.pg];
+  if (!pg.bg) pg.bg = { img: '', size: 'cover', opacity: 1, x: 0, y: 0 };
+  
   let optStr = '<option value="">(Sem Fundo Preto)</option>';
   if (ST.imgList && ST.imgList.length > 0) {
     ST.imgList.forEach(img => {
@@ -285,13 +292,32 @@ function openBgMenu(){
   const btn = document.getElementById('btn-del-bg');
   if(btn) btn.style.display = pg.bg.img && pg.bg.img.startsWith('data:image') ? 'block' : 'none';
 
-  document.getElementById('bg-size').value=pg.bg.size;
+  const sizeEl = document.getElementById('bg-size');
+  if (sizeEl) sizeEl.value = pg.bg.size || 'cover';
+  
+  const opacityEl = document.getElementById('bg-opacity');
+  const vOp = document.getElementById('vbg-op');
+  const opVal = pg.bg.opacity !== undefined ? Math.round(pg.bg.opacity * 100) : 100;
+  if(opacityEl) opacityEl.value = opVal;
+  if(vOp) vOp.innerText = opVal;
+
   document.getElementById('bgmenu').classList.add('open'); 
 }
 function closeBgMenu(){ document.getElementById('bgmenu').classList.remove('open'); }
 
 function applyBg(){ 
-  const pg=ST.cfg.orientations[ST.orientation][ST.pg]; pg.bg.img=document.getElementById('bg-url').value; pg.bg.size=document.getElementById('bg-size').value; 
+  const pg=ST.cfg.orientations[ST.orientation][ST.pg];
+  if (!pg.bg) pg.bg = { img: '', size: 'cover', opacity: 1, x: 0, y: 0 };
+  
+  const selBg = document.getElementById('bg-url');
+  if(selBg) pg.bg.img = selBg.value;
+  
+  const selSize = document.getElementById('bg-size');
+  if(selSize) pg.bg.size = selSize.value;
+  
+  const opacityEl = document.getElementById('bg-opacity');
+  if (opacityEl) pg.bg.opacity = parseFloat(opacityEl.value) / 100;
+  
   applyPageBg(ST.pg); saveToESP();
 }
 

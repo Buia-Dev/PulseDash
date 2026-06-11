@@ -4,8 +4,8 @@
 
 ---
 
-## 📅 Última Atualização: 2026-06-09
-**Versão Atual:** v6.9 — **COLEÇÃO DE AGULHAS & NATIVE BUILD** ✅
+## 📅 Última Atualização: 2026-06-11
+**Versão Atual:** v7.0 — **UNIVERSAL OBD2 & BINARY TELEMETRY** ✅
 
 ---
 
@@ -18,20 +18,21 @@
 
 ---
 
-## 🏗️ Arquitetura de Arquivos (v6.9)
+## 🏗️ Arquitetura de Arquivos (v7.0)
 
 ```
 PulseDash/PulseDash/data/
-├── index.html        — Layout de widgets, modais, handling de erros
+├── index.html        — Layout de widgets, modal de configuração de veículo (#car-overlay)
 ├── bar_arc_preview.html — Preview de 10 novos conceitos de arcos e barras
 ├── needle_preview.html  — Preview e catálogo das 16 agulhas
 └── js/
-    ├── state.js      — Sensores, CONFIG, agulhas (NEEDLES_CONFIG)
+    ├── state.js      — Sensores, CONFIG, agulhas, ST.car (dados de marca/modelo/perfil)
     ├── renderers.js  — Canvas Rendering, auto-escala (sf), 16 agulhas
     ├── editor.js     — Editor drag-and-drop, dropdown agrupado com <optgroup>
-    ├── main.js       — Loop requestAnimationFrame
-    ├── transport.js  — Bluetooth Serial RFCOMM e WebSocket fallback
+    ├── main.js       — Loop requestAnimationFrame, updateProfileOptions()
+    ├── transport.js  — Bluetooth Serial RFCOMM (decoder binário + dynamic formula evaluator)
     ├── perf.js       — Cronômetro 0-100, state machine, Top 5
+    ├── profiles_db.js — Banco de dados de 18 perfis OBD2/K-Line extraídos do RealDash
     └── trip.js       — Computador de bordo (timers, odômetro, boia slosh)
 ```
 
@@ -41,22 +42,19 @@ PulseDash/PulseDash/data/
 
 ## 🔌 Firmware (PulseDashESP_BT.ino)
 
-**Protocolo:** CAN Bus 29-bit Extended @ 500kbps  
+**Protocolo:** CAN Bus (TWAI) Dinâmico (Baudrate, IDs de TX/RX e PIDs configurados sob demanda via BT)  
 **Módulo:** SN65HVD230 (TX=GPIO17, RX=GPIO16)  
 **Bluetooth:** `BluetoothSerial SerialBT` → nome `PULSESCAN`  
-**Transmissão:** JSON linha por linha a ~33Hz via `SerialBT.println(buf)`  
+**Transmissão:** Frame binário cru compacto de **42 bytes** a 20Hz via `SerialBT.write(buf, 42)`  
 
-**Endereços Onix 2026:**
-- TX Request: `0x18DB33F1`
-- RX Response: `0x18DAF111`
-- UDS TX: `0x18DA11F1` → UDS RX: `0x18DAF111`
+**Handshake e Configuração Dinâmica:**
+- Ao conectar, o App envia a string `CFG;[baud];[can_type];[tx_id];[rx_id];[tester];[handshake];[speed_formula];[fuel_formula];[sensores...]`.
+- A ESP32 salva o perfil na partição LittleFS (`/car_profile.cfg`) e reinicia o driver TWAI (Baudrate e Filtros).
+- O parser suporta PIDs de 16-bit e Modos Customizados (01, 21, 22) baseados no comprimento do hex string (2, 4 ou 6 chars).
 
-**Scheduler de 10 slots (50ms/ciclo):**
-- Todo ciclo: RPM (`0x0C`) + Speed (`0x0D`)
-- `loopCount % 2 == 0`: Borboleta (`0x11`) ou Pedal (`0x49`) alternados
-- `loopCount % 10 == 0`: Carga (`0x04`) ou MAP (`0x0B`) alternados
-- `loopCount % 2 == 1`: `slowIndex` rotaciona entre 10 sensores lentos (Fuel Rate, Coolant, TripDist, Volt, Ambient, Catalyst, FuelLevel, TransTemp, OilPres, OilTemp)
-- Etanol: startup + cada 5min (300s)
+**Fila de Polling (Escalonador por skipCount):**
+- Todo ciclo (50ms): Consulta o RPM dinâmico (`rpmPid` a `rpmMode`).
+- Sensores Secundários: O scheduler seleciona o sensor mais atrasado e realiza no máximo 1 requisição secundária por loop. Sensores não suportados entram em cooldown de 30s.
 
 **Compilação:**
 ```powershell
@@ -69,20 +67,25 @@ PulseDash/PulseDash/data/
 ## 📡 Protocolo de Comunicação App ↔ ESP32
 
 **App → ESP32 (comandos):**
-```json
+```text
+CFG;500;29;18db33f1;18daf111;1;20;0;0;0d:1:0:0:0;11:1:2:0:1... // String de Configuração do veículo
 {"cmd":"sync", "ts":1748000000}       // Sincroniza hora (Unix timestamp)
-{"cmd":"perf", "payload":[...]}        // Salva Top 5 no LittleFS
-{"cmd":"trip_reset"}                   // Zera o computador de bordo
+{"cmd":"price", "val":5.89}           // Sincroniza preço do combustível
+{"cmd":"trip_hist"}                   // Solicita histórico de viagens
 ```
 
-**ESP32 → App (telemetria, ~33Hz):**
-```json
-{"rpm":1450,"speed":0,"throttle":24,"pedal":20,"load":15,"fuelRate":1.2,"boost":35.2,"coolant":87,"catalyst":420,"ambient":28,"ethanol":72,"voltage":13.8,"fuelLevel":47,"transTemp":72,"oilPres":2.3,"oilTemp":88,"tripDist":0,"tripFuel":0.000,"tripTimeTot":0,"tripTimeDri":0,"obd_state":4}
-```
+**ESP32 → App (frame de telemetria binária de 42 bytes):**
+- `[0..3]`: Headers de sincronização (`0x44, 0x33, 0x22, 0x11`)
+- `[4]`: Tipo de pacote (`0x01` = Telemetria)
+- `[5..22]`: Bytes brutos de sensores (RPM, Speed, Throttle, Pedal, Load, FuelRate, Boost, Coolant, Catalyst, Ambient, Ethanol, Volt, FuelLevel)
+- `[23..38]`: Dados reais de viagem integrados na ESP32 (TripDist, TripFuel, TripTimeTot, TripTimeDri)
+- `[39]`: Estado da conexão OBD2 (`obd_state`)
+- `[40]`: Duração do loop CAN (`loopMs`)
+- `[41]`: Checksum (Soma simples mod 256 dos 41 bytes anteriores)
 
 ---
 
-## 🐛 Bugs Conhecidos / Resolvidos em v6.2
+## 🐛 Bugs Conhecidos / Resolvidos em v7.0
 
 | Bug | Causa | Status |
 |:---|:---|:---:|

@@ -177,6 +177,7 @@
   <div id="perf-btn" title="Performance Mode">⏱️</div>
   <div id="trip-btn" title="Computador de Bordo">📊</div>
   <div id="dtc-btn" title="Diagnóstico de Erros">🔍</div>
+  <div id="car-cfg-btn" title="Configurações do Carro">🚗</div>
 
   <div id="fab">⚙️</div>
 
@@ -185,9 +186,9 @@
   <!-- PERFORMANCE PANEL OVERLAY -->
   <div id="perf-overlay">
     <div class="perf-card-wrapper">
-      <div id="perf-ready-flag">READY</div>
+      <div id="perf-ready-flag">PRONTO</div>
       <div class="perf-card">
-        <div class="perf-title">PERFORMANCE TRACKER</div>
+        <div class="perf-title">MEDIDOR DE PERFORMANCE</div>
         
         <div class="perf-scroll-content">
           <div class="perf-main-speed">
@@ -457,6 +458,95 @@
           <button class="dtc-btn-ui" id="btn-dtc-clear" style="display: none;">APAGAR ERROS</button>
           <button class="dtc-btn-ui" id="btn-dtc-google" style="display: none;">VER NO GOOGLE</button>
           <button class="dtc-btn-ui close" id="btn-dtc-close">VOLTAR</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VEHICLE CONFIGURATION OVERLAY -->
+  <div id="car-overlay">
+    <div class="dtc-card-wrapper">
+      <div class="dtc-card" style="border-color: var(--azul-c); box-shadow: 0 20px 50px rgba(0,0,0,0.9), 0 0 30px rgba(0, 242, 255, 0.15);">
+        <div class="dtc-title" style="color: var(--azul-c); text-shadow: 0 0 10px rgba(0, 242, 255, 0.5);">CONFIGURAÇÃO DO VEÍCULO</div>
+        
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 15px; overflow-y: auto; padding-right: 5px; margin-top: 10px;">
+          <!-- Marca -->
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 15px; width: 100%;">
+            <label style="font-family: 'Orbitron'; font-size: 11px; color: #aaa; letter-spacing: 1px;">MARCA:</label>
+            <select id="car-sel-brand" class="trip-ui-select" style="width: 170px;">
+              <option value="chevrolet">CHEVROLET</option>
+              <option value="fiat">FIAT</option>
+              <option value="ford">FORD</option>
+              <option value="honda">HONDA</option>
+              <option value="hyundai">HYUNDAI</option>
+              <option value="nissan">NISSAN</option>
+              <option value="renault">RENAULT</option>
+              <option value="toyota">TOYOTA</option>
+              <option value="volkswagen">VOLKSWAGEN</option>
+              <option value="outra">OUTRA</option>
+            </select>
+          </div>
+
+          <!-- Perfil OBD2 -->
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 15px; width: 100%;">
+            <label style="font-family: 'Orbitron'; font-size: 11px; color: #aaa; letter-spacing: 1px;">PERFIL OBD2:</label>
+            <select id="car-sel-profile" class="trip-ui-select" style="width: 170px;">
+              <!-- Alimentado via JS -->
+            </select>
+          </div>
+          
+          <!-- Modelo -->
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 15px; width: 100%;">
+            <label style="font-family: 'Orbitron'; font-size: 11px; color: #aaa; letter-spacing: 1px;">MODELO:</label>
+            <input type="text" id="car-inp-model" placeholder="Ex: Onix" class="trip-ui-input" style="width: 170px; text-align: left;">
+          </div>
+          
+          <!-- Cilindrada -->
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 15px; width: 100%;">
+            <label style="font-family: 'Orbitron'; font-size: 11px; color: #aaa; letter-spacing: 1px;">CILINDRADA:</label>
+            <select id="car-sel-engine" class="trip-ui-select" style="width: 170px;">
+              <option value="1.0">1.0</option>
+              <option value="1.2">1.2</option>
+              <option value="1.3">1.3</option>
+              <option value="1.4">1.4</option>
+              <option value="1.5">1.5</option>
+              <option value="1.6">1.6</option>
+              <option value="1.8">1.8</option>
+              <option value="2.0">2.0</option>
+              <option value="outra">OUTRA</option>
+            </select>
+          </div>
+
+          <!-- Aspiração -->
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 15px; width: 100%;">
+            <label style="font-family: 'Orbitron'; font-size: 11px; color: #aaa; letter-spacing: 1px;">ASPIRAÇÃO:</label>
+            <select id="car-sel-aspiration" class="trip-ui-select" style="width: 170px;">
+              <option value="aspirado">ASPIRADO</option>
+              <option value="turbo">TURBO</option>
+            </select>
+          </div>
+
+          <!-- Combustível -->
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 15px; width: 100%;">
+            <label style="font-family: 'Orbitron'; font-size: 11px; color: #aaa; letter-spacing: 1px;">COMBUSTÍVEL:</label>
+            <select id="car-sel-fuel" class="trip-ui-select" style="width: 170px;">
+              <option value="flex">FLEX</option>
+              <option value="gasolina">GASOLINA</option>
+              <option value="alcool">ÁLCOOL</option>
+              <option value="diesel">DIESEL</option>
+            </select>
+          </div>
+
+          <!-- Capacidade Tanque -->
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 15px; width: 100%;">
+            <label style="font-family: 'Orbitron'; font-size: 11px; color: #aaa; letter-spacing: 1px;">TANQUE (L):</label>
+            <input type="number" id="car-inp-tank" placeholder="Ex: 44" class="trip-ui-input" style="width: 170px;">
+          </div>
+        </div>
+
+        <div class="dtc-footer" style="margin-top: 10px;">
+          <button class="dtc-btn-ui" id="btn-car-save" style="border-color: var(--azul-c); background: rgba(0, 242, 255, 0.05); color: var(--azul-c);">SALVAR</button>
+          <button class="dtc-btn-ui close" id="btn-car-close">VOLTAR</button>
         </div>
       </div>
     </div>

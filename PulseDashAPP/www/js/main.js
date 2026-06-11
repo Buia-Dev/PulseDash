@@ -1,5 +1,6 @@
 'use strict';
 import { ST, CFG_DEF, LOCAL_IMAGES } from './state.js';
+import { PROFILES } from './profiles_db.js';
 import { renderWidget } from './renderers.js';
 import {
   mkWidget, toggleEditor, exitEditor, openBgMenu, openAddMenu,
@@ -89,9 +90,6 @@ function autoScale() {
   const baseH = newOri === 'landscape' ? 412 : 820;
   ST.scale = Math.min(w / baseW, h / baseH);
   
-  // Capping de escala máxima (v6.9.0): evita que as coisas fiquem gigantes em monitores de PC
-  ST.scale = Math.min(ST.scale, 1.4);
-  
   if (newOri !== ST.orientation && !ST.booting) {
     ST.orientation = newOri;
     swapOrientation();
@@ -116,24 +114,24 @@ function autoScale() {
   
   const vp = document.getElementById('viewport');
   if (vp) {
-    vp.style.width = baseW + 'px';
-    vp.style.height = baseH + 'px';
-    vp.style.transform = `scale(${ST.scale})`;
-    vp.style.left = offsetX + 'px';
-    vp.style.top = offsetY + 'px';
-    
-    // Ativa moldura simulada de tablet se a tela real for maior que o viewport (ex: PCs)
-    const isCapped = (w > scaledW + 10 || h > scaledH + 10);
-    vp.classList.toggle('viewport-device', isCapped);
+    vp.style.width = '100%';
+    vp.style.height = '100%';
+    vp.style.transform = '';
+    vp.style.left = '0px';
+    vp.style.top = '0px';
+    vp.classList.remove('viewport-device');
   }
+  
+  let gap = (w / ST.scale) - baseW + 50;
+  if (gap < 50) gap = 50;
   
   const pw = document.getElementById('pages-wrap');
   if (pw) {
-    pw.style.gap = '50px';
-    const tx = (baseW + 50) * ST.pg * -1;
-    pw.style.transform = `translateX(${tx}px)`;
-    pw.style.left = '0px';
-    pw.style.top = '0px';
+    pw.style.gap = gap + 'px';
+    const tx = (baseW + gap) * ST.pg * -1;
+    pw.style.transform = `scale(${ST.scale}) translateX(${tx}px)`;
+    pw.style.left = offsetX + 'px';
+    pw.style.top = offsetY + 'px';
   }
 }
 
@@ -494,11 +492,110 @@ function updateOverlay(state, autoClose = false) {
 }
 
 // ==============================================================
+// ★ SISTEMA DE CONFIGURAÇÃO DO VEÍCULO v7.0 ★
+// ==============================================================
+const BRAND_PROFILES = {
+  chevrolet: ['generic', 'gm_ls', 'opel_kwp2000'],
+  fiat: ['generic', 'fiat_precan'],
+  ford: ['generic'],
+  honda: ['generic'],
+  hyundai: ['generic'],
+  nissan: ['generic', 'nissan_generic'],
+  renault: ['generic'],
+  toyota: ['generic', 'toyota_celica_corolla_camry', 'toyota_gt86', 'toyota_jdm_generic', 'toyota_jdm_iso9141', 'toyota_rav4_supra_lexus_is', 'toyota_vitz'],
+  volkswagen: ['generic', 'bosch_mp70', 'january_5_1', 'Itelma_M73_E3'],
+  outra: ['generic', 'bosch_mp70', 'fiat_precan', 'gm_ls', 'Itelma_M73_E3', 'january_5_1', 'mitsubishi_mut', 'nissan_generic', 'opel_kwp2000', 'saab_generic', 'toyota_celica_corolla_camry', 'toyota_gt86', 'toyota_jdm_generic', 'toyota_jdm_iso9141', 'toyota_rav4_supra_lexus_is', 'toyota_vitz', 'volvo_noncan1', 'volvo_noncan2']
+};
+
+const PROFILE_LABELS = {
+  generic: "Padrão OBD2 Genérico",
+  bosch_mp70: "Bosch MP7.0 (Mi antigo)",
+  fiat_precan: "Fiat Pre-CAN (Marelli)",
+  gm_ls: "GM LS V8 (Estendido)",
+  Itelma_M73_E3: "Itelma M73 E3 (Lada)",
+  january_5_1: "January 5.1 (Yanvar)",
+  mitsubishi_mut: "Mitsubishi MUT",
+  nissan_generic: "Nissan (Genérico)",
+  opel_kwp2000: "Opel KWP2000 (Astra/Vectra)",
+  saab_generic: "Saab (Genérico)",
+  toyota_celica_corolla_camry: "Toyota (Celica/Corolla/Camry)",
+  toyota_gt86: "Toyota GT86 / BRZ",
+  toyota_jdm_generic: "Toyota JDM Genérico",
+  toyota_jdm_iso9141: "Toyota JDM ISO9141",
+  toyota_rav4_supra_lexus_is: "Toyota RAV4/Supra/Lexus",
+  toyota_vitz: "Toyota Vitz / Yaris",
+  volvo_noncan1: "Volvo Non-CAN Tipo 1",
+  volvo_noncan2: "Volvo Non-CAN Tipo 2"
+};
+
+function updateProfileOptions(brand, selectedProfile) {
+  const selProfile = document.getElementById('car-sel-profile');
+  if (!selProfile) return;
+  selProfile.innerHTML = '';
+  
+  const profilesList = BRAND_PROFILES[brand] || BRAND_PROFILES['outra'];
+  profilesList.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p;
+    opt.textContent = PROFILE_LABELS[p] || p.toUpperCase();
+    if (p === selectedProfile) {
+      opt.selected = true;
+    }
+    selProfile.appendChild(opt);
+  });
+}
+
+function openCarOverlay() {
+  document.getElementById('car-overlay').classList.add('open');
+  
+  // Carrega valores do estado para os campos da tela
+  const c = ST.car || { brand: 'chevrolet', model: 'Onix 2026', engine: '1.0', aspiration: 'turbo', fuel: 'flex', tank: 44, profile: 'generic' };
+  document.getElementById('car-sel-brand').value = c.brand || 'chevrolet';
+  document.getElementById('car-inp-model').value = c.model || '';
+  document.getElementById('car-sel-engine').value = c.engine || '1.0';
+  document.getElementById('car-sel-aspiration').value = c.aspiration || 'turbo';
+  document.getElementById('car-sel-fuel').value = c.fuel || 'flex';
+  document.getElementById('car-inp-tank').value = c.tank || '';
+  
+  updateProfileOptions(c.brand || 'chevrolet', c.profile || 'generic');
+}
+
+function closeCarOverlay() {
+  document.getElementById('car-overlay').classList.remove('open');
+}
+
+function saveCarConfig() {
+  const brand = document.getElementById('car-sel-brand').value;
+  const model = document.getElementById('car-inp-model').value.trim();
+  const engine = document.getElementById('car-sel-engine').value;
+  const aspiration = document.getElementById('car-sel-aspiration').value;
+  const fuel = document.getElementById('car-sel-fuel').value;
+  const tank = parseFloat(document.getElementById('car-inp-tank').value) || 44;
+  const profile = document.getElementById('car-sel-profile').value || 'generic';
+
+  ST.car = { brand, model, engine, aspiration, fuel, tank, profile };
+  localStorage.setItem('PULSEDASH_CAR', JSON.stringify(ST.car));
+  
+  toast('✅ VEÍCULO SALVO');
+  closeCarOverlay();
+}
+
+// ==============================================================
 // ★ SISTEMA DE DIAGNÓSTICO DTC (CONSOLE CMD) v6.8 ★
 // ==============================================================
 let selectedDtcCode = null;
 const searchedCodes = new Set();
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+let dtcTimers = [];
+let dtcResolves = [];
+
+function clearDtcTimers() {
+  dtcTimers.forEach(clearInterval);
+  dtcTimers = [];
+  dtcResolves.forEach(resolve => resolve());
+  dtcResolves = [];
+}
 
 function toggleDtcOverlay() {
   document.getElementById('dtc-overlay').classList.add('open');
@@ -507,10 +604,19 @@ function toggleDtcOverlay() {
 
 function closeDtcOverlay() {
   document.getElementById('dtc-overlay').classList.remove('open');
-  resetDtcConsole();
+  clearDtcTimers();
+  const consoleEl = document.getElementById('dtc-console');
+  if (consoleEl) {
+    consoleEl.innerHTML = '';
+  }
+  selectedDtcCode = null;
+  searchedCodes.clear();
+  document.getElementById('btn-dtc-clear').style.display = 'none';
+  document.getElementById('btn-dtc-google').style.display = 'none';
 }
 
 async function resetDtcConsole() {
+  clearDtcTimers();
   selectedDtcCode = null;
   searchedCodes.clear();
   document.getElementById('btn-dtc-clear').style.display = 'none';
@@ -556,6 +662,14 @@ function typeConsoleLine(text, styleClass = '', speedMs = 15) {
     let index = 0;
     line.textContent = ' ';
     
+    let resolved = false;
+    const safeResolve = () => {
+      if (!resolved) {
+        resolved = true;
+        resolve();
+      }
+    };
+    
     const timer = setInterval(() => {
       if (index < text.length) {
         line.textContent = text.substring(0, index + 1) + '█';
@@ -563,11 +677,18 @@ function typeConsoleLine(text, styleClass = '', speedMs = 15) {
         scrollToBottom();
       } else {
         clearInterval(timer);
+        const tIdx = dtcTimers.indexOf(timer);
+        if (tIdx > -1) dtcTimers.splice(tIdx, 1);
+        const rIdx = dtcResolves.indexOf(safeResolve);
+        if (rIdx > -1) dtcResolves.splice(rIdx, 1);
         line.textContent = text; // Remove cursor no final
         scrollToBottom();
-        resolve();
+        safeResolve();
       }
     }, speedMs);
+    
+    dtcTimers.push(timer);
+    dtcResolves.push(safeResolve);
   });
 }
 
@@ -582,6 +703,7 @@ function writeConsoleLine(text, styleClass = '') {
 }
 
 async function runDtcScan() {
+  clearDtcTimers();
   selectedDtcCode = null;
   document.getElementById('btn-dtc-clear').style.display = 'none';
   document.getElementById('btn-dtc-google').style.display = 'none';
@@ -616,6 +738,7 @@ async function runDtcScan() {
 }
 
 async function runDtcClear() {
+  clearDtcTimers();
   const consoleEl = document.getElementById('dtc-console');
   if (!consoleEl) return;
   
@@ -661,7 +784,7 @@ async function searchDtcGoogle() {
   // O charme do delay de 1 segundo solicitado para contemplar o efeito visual
   await delay(1000);
   
-  let brand = 'Fiat'; 
+  let brand = ST.car?.brand || 'Fiat'; 
   const query = `OBD2 DTC ${selectedDtcCode} ${brand}`;
   const url = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
   window.open(url, '_blank');
@@ -672,6 +795,7 @@ async function searchDtcGoogle() {
 // Reaproveita 100% do código de renderização de cards + typing já existente.
 // ==============================================================
 document.addEventListener('dtc_data', async (e) => {
+  clearDtcTimers();
   const codes = e.detail || [];
   const consoleEl = document.getElementById('dtc-console');
   if (!consoleEl) return;
@@ -915,6 +1039,14 @@ function bindEvents() {
   document.getElementById('btn-dtc-scan')?.addEventListener('click', runDtcScan);
   document.getElementById('btn-dtc-clear')?.addEventListener('click', runDtcClear);
   document.getElementById('btn-dtc-google')?.addEventListener('click', searchDtcGoogle);
+
+  // Car Config Modal v7.0
+  document.getElementById('car-cfg-btn')?.addEventListener('click', openCarOverlay);
+  document.getElementById('btn-car-close')?.addEventListener('click', closeCarOverlay);
+  document.getElementById('btn-car-save')?.addEventListener('click', saveCarConfig);
+  document.getElementById('car-sel-brand')?.addEventListener('change', (e) => {
+    updateProfileOptions(e.target.value, ST.car?.profile || 'generic');
+  });
   
   document.getElementById('btn-fs')?.addEventListener('click', toggleFS);
   document.getElementById('btn-bg')?.addEventListener('click', openBgMenu);

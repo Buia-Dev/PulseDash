@@ -45,55 +45,35 @@ uint32_t lastUnixSyncMs = 0;
 uint32_t lastKnownEpoch = 0; // Timestamp do último dia rodado
 
 // ==============================================================
-// ★ FUNÇÃO: SALVAR HISTÓRICO DE 7 DIAS ★
+// ★ FUNÇÃO: SINALIZAR SALVAMENTO DO HISTÓRICO EM SEGUNDO PLANO ★
 // ==============================================================
-void saveTripToHistory(uint32_t ts_day) {
-  if (tripDist < 0.5f) return; // Ignora se não andou nem 500 metros
-  
-  String hist = "[]";
-  if (LittleFS.exists("/trip_hist.json")) {
-    File f = LittleFS.open("/trip_hist.json", "r");
-    if(f) { hist = f.readString(); f.close(); }
+void triggerSaveHistory(uint32_t ts_day) {
+  if (saveHistPending) {
+    logEvent("[TRIP] Salvamento de historico ja pendente. Ignorando.");
+    return;
   }
   
-  char entry[160];
-  snprintf(entry, sizeof(entry), "{\"ts\":%u,\"dist\":%.2f,\"fuel\":%.3f,\"ttot\":%u,\"tdri\":%u,\"price\":%.2f}", 
-           ts_day, tripDist, tripFuel, tripTimeTot, tripTimeDri, fuelPrice);
-           
-  if (hist.length() <= 2) {
-    hist = "[" + String(entry) + "]";
+  xSemaphoreTake(dataMutex, portMAX_DELAY);
+  if (tripDist >= 0.5f) {
+    histPendingTs = ts_day;
+    histPendingDist = tripDist;
+    histPendingFuel = tripFuel;
+    histPendingTimeTot = tripTimeTot;
+    histPendingTimeDri = tripTimeDri;
+    histPendingPrice = fuelPrice;
+    saveHistPending = true;
+    logEvent("[TRIP] Sinalizado salvamento de historico na Flash em background.");
   } else {
-    hist.remove(hist.length() - 1); // remove o último "]"
-    hist += ",";
-    hist += String(entry);
-    hist += "]";
+    logEvent("[TRIP] Viagem curta demais para historico. Apenas resetando contadores.");
   }
   
-  // Limita a 7 registros
-  int entryCount = 0;
-  for(int i=0; i<hist.length(); i++) { if(hist[i] == '{') entryCount++; }
-  
-  while(entryCount > 7) {
-    int firstOpen = hist.indexOf('{');
-    int secondOpen = hist.indexOf('{', firstOpen + 1);
-    if(secondOpen > 0) {
-      hist = "[" + hist.substring(secondOpen);
-      entryCount--;
-    } else { break; }
-  }
-
-  File f = LittleFS.open("/trip_hist.json", "w");
-  if(f) { f.print(hist); f.close(); }
-  
-  logEvent("[TRIP] Viagem fechada e salva no historico. Dist: " + String(tripDist));
-
-  // Zera contadores do dia atual
+  // Zera contadores locais do dia atual sob mutex
   tripDist = 0;
   tripFuel = 0;
   tripTimeTot = 0;
   tripTimeDri = 0;
-  lastSavedDist = 0.0f; // v6.5: Reseta o marcador de distância gravada
-  LittleFS.remove("/trip_current.json");
+  lastSavedDist = 0.0f;
+  xSemaphoreGive(dataMutex);
 }
 
 #define LED_PIN 2
@@ -115,10 +95,25 @@ volatile int obdState = 0;
 volatile bool btRequested = false; // dashboard controla liga/desliga
 volatile uint32_t obdLastOk = 0;
 
-// --- Variáveis de Controle e Simulação de DTC ---
+// --- Variáveis de Controle de DTC ---
 volatile bool dtcScanPending = false;
 volatile bool dtcClearPending = false;
-bool simDtcsCleared = false; // Flag para simulação em bancada
+
+// --- Variáveis de Sinalização de Escrita em Flash (LittleFS) ---
+volatile bool saveTripPending = false;
+volatile bool saveUnsupportedPending = false;
+volatile bool saveHistPending = false;
+volatile bool saveConfigPending = false;
+
+// Buffers de transferência para as tasks de background
+uint32_t histPendingTs = 0;
+float histPendingDist = 0.0f;
+float histPendingFuel = 0.0f;
+uint32_t histPendingTimeTot = 0;
+uint32_t histPendingTimeDri = 0;
+float histPendingPrice = 0.0f;
+
+char pendingConfigCmd[512] = "";
 
 
 // Sensores em struct — reset limpo e cópia atômica
@@ -139,21 +134,89 @@ struct SensorData {
   float transTemp = 0;
   float oilPres = 0;
   float oilTemp = 0;
+  float fuelPress = 0;
+  float iat = 0;
+  float egt = 0;
+  float afr = 0;
+  float lambda = 0;
+  float timing = 0;
   float loopMs = 0; // v6.9: Tempo de loop CAN em milissegundos
 };
 SensorData sensors;
 
 // ==============================================================
-// ★ CAN / TWAI: COMUNICAÇÃO OBD2 DIRETO (29-bit @ 500kbps) ★
+// ★ ESTRUTURAS DO NOVO ESCALONADOR DINÂMICO v7.0 ★
 // ==============================================================
-// Confirmado: TX=0x18DB33F1 | RX=0x18DAF111 | Onix 2026
+struct OBD2Sensor {
+  uint16_t pid;          // v7.0: Alterado de uint8_t para uint16_t para PIDs de 2 bytes
+  uint8_t mode;          // v7.0: Adicionado para suportar modos customizados (0x01, 0x21, 0x22, etc.)
+  uint8_t nBytes;
+  uint16_t skipCount;
+  uint16_t skipCounter;
+  float* valuePtr;
+  uint32_t cooldownUntil;
+  uint8_t failedCount;
+  const char* name;
+  uint8_t srcOffset;     // v7.0: offset do byte na resposta
+  uint8_t destSensorId;  // v7.0: ID do sensor alvo no buffer binário
+};
+
+#define MAX_SENSORS 25
+volatile int numSchedSensors = 11;
+OBD2Sensor schedSensors[MAX_SENSORS] = {
+  { 0x0D, 0x01, 1,   1, 0, &sensors.speed,       0, 0, "Speed",       0, 0 },
+  { 0x11, 0x01, 1,   3, 0, &sensors.throttle,    0, 0, "Throttle",    0, 1 },
+  { 0x49, 0x01, 1,   3, 0, &sensors.pedal,       0, 0, "Pedal",       0, 2 },
+  { 0x04, 0x01, 1,   9, 0, &sensors.load,        0, 0, "Load",        0, 3 },
+  { 0x5E, 0x01, 2,   9, 0, &sensors.fuelRate,    0, 0, "FuelRate",    0, 4 },
+  { 0x05, 0x01, 1,  99, 0, &sensors.coolant,     0, 0, "Coolant",     0, 6 },
+  { 0x42, 0x01, 2,  99, 0, &sensors.voltage,     0, 0, "Voltage",     0, 10 },
+  { 0x46, 0x01, 1,  99, 0, &sensors.ambientTemp, 0, 0, "Ambient",     0, 8 },
+  { 0x3C, 0x01, 2,  99, 0, &sensors.catalyst,    0, 0, "Catalyst",    0, 7 },
+  { 0x2F, 0x01, 1,  99, 0, &sensors.fuelLevel,   0, 0, "FuelLevel",   0, 11 },
+  { 0x52, 0x01, 1, 5999, 0, &sensors.ethanol,    0, 0, "Ethanol",     0, 9 }
+};
+
+// Variáveis dinâmicas de configuração v7.0
+uint32_t configBaud = 500;
+uint8_t configCanType = 29;
+uint32_t configTxId = 0x18DB33F1;
+uint32_t configRxId = 0x18DAF111;
+uint8_t configTesterPresent = 1;
+uint16_t configHandshakePid = 0x00; // v7.0: Alterado para uint16_t
+uint8_t configHandshakeMode = 0x01; // v7.0: Adicionado para suportar modos estendidos no handshake
+
+uint16_t rpmPid = 0x0C; // v7.0: Alterado de uint8_t para uint16_t
+uint8_t rpmMode = 0x01; // v7.0: Adicionado para controle do modo do RPM
+uint8_t rpmBytes = 2;
+uint8_t rpmSrcOffset = 0;
+
+uint8_t speedFormulaId = 0;
+uint8_t fuelFormulaId = 0;
+
+// Variáveis reais de viagem desacopladas do buffer bruto
+float tripSpeed = 0.0f;
+float tripFuelRate = 0.0f;
+
+// ==============================================================
+// ★ CAN / TWAI: COMUNICAÇÃO OBD2 DINÂMICA ★
+// ==============================================================
 
 bool canInit() {
   twai_general_config_t g = TWAI_GENERAL_CONFIG_DEFAULT(
       (gpio_num_t)CAN_TX_PIN, (gpio_num_t)CAN_RX_PIN, TWAI_MODE_NORMAL);
   g.alerts_enabled = TWAI_ALERT_ALL;
   g.rx_queue_len = 10;
-  twai_timing_config_t t = TWAI_TIMING_CONFIG_500KBITS();
+  
+  twai_timing_config_t t;
+  if (configBaud == 250) {
+    t = TWAI_TIMING_CONFIG_250KBITS();
+  } else if (configBaud == 125) {
+    t = TWAI_TIMING_CONFIG_125KBITS();
+  } else {
+    t = TWAI_TIMING_CONFIG_500KBITS();
+  }
+  
   twai_filter_config_t f = TWAI_FILTER_CONFIG_ACCEPT_ALL();
   if (twai_driver_install(&g, &t, &f) != ESP_OK)
     return false;
@@ -164,15 +227,23 @@ bool canInit() {
   return true;
 }
 
-bool canSendOBD(uint8_t pid) {
+bool canSendOBD(uint16_t pid, uint8_t mode = 0x01, uint8_t len = 1) {
   twai_message_t m;
   memset(&m, 0, sizeof(m));
-  m.identifier = 0x18DB33F1; // Broadcast OBD2 29-bit
-  m.extd = 1;
+  m.identifier = configTxId;
+  m.extd = (configCanType == 29) ? 1 : 0;
   m.data_length_code = 8;
-  m.data[0] = 0x02;
-  m.data[1] = 0x01;
-  m.data[2] = pid;
+  
+  if (len == 2) {
+    m.data[0] = 0x03;
+    m.data[1] = mode;
+    m.data[2] = (pid >> 8) & 0xFF;
+    m.data[3] = pid & 0xFF;
+  } else {
+    m.data[0] = 0x02;
+    m.data[1] = mode;
+    m.data[2] = pid & 0xFF;
+  }
   return twai_transmit(&m, pdMS_TO_TICKS(20)) == ESP_OK;
 }
 
@@ -186,104 +257,72 @@ void ledBlink(int count, int delayMs) {
   }
 }
 
-// Envia pedido e aguarda resposta — retorna valor calculado ou -999.0f se timeout/erro
-float canReadSensor(uint8_t pid, int nBytes) {
-  if (!canSendOBD(pid))
-    return -999.0f;
+// Retorna valor bruto cru do sensor (Single Frame CAN)
+int32_t canReadSensorRaw(uint16_t pid, uint8_t len, uint8_t srcOffset, uint8_t mode = 0x01) {
+  uint8_t pidLen = (mode == 0x22 || pid > 0xFF) ? 2 : 1;
+  if (!canSendOBD(pid, mode, pidLen))
+    return -999;
+    
   twai_message_t r;
   uint32_t t0 = millis();
-  // v5.5: Timeout reduzido para 25ms para latência zero absoluta (ECU responde em ~12-15ms)
   while (millis() - t0 < 25) {
     if (twai_receive(&r, pdMS_TO_TICKS(1)) == ESP_OK) {
-      if (r.extd && r.identifier == 0x18DAF111 && r.data[1] == 0x41 &&
-          r.data[2] == pid) {
-        uint8_t A = r.data[3], B = r.data[4];
-        switch (pid) {
-        case 0x0C:
-          return ((A * 256.0f) + B) / 4.0f; // RPM
-        case 0x0D:
-          return (float)A; // Velocidade
-        case 0x05:
-          return A - 40.0f; // Temp. Coolant
-        case 0x11:
-          return A * 100.0f / 255.0f; // Throttle (Borboleta)
-        case 0x49:
-          return A * 100.0f / 255.0f; // Pedal APP
-        case 0x04:
-          return A * 100.0f / 255.0f; // Carga motor
-        case 0x5E:
-          return ((A * 256.0f) + B) / 20.0f; // Fuel Rate (L/h)
-        case 0x0B:
-          return (float)A; // MAP kPa
-        case 0x46:
-          return A - 40.0f; // Temp. Ambiente
-        case 0x52:
-          return A * 100.0f / 255.0f; // Etanol %
-        case 0x3C:
-          return ((A * 256.0f) + B) / 10.0f - 40; // Catalisador
-        case 0x42:
-          return ((A * 256.0f) + B) / 1000.0f; // Tensão ECU
-        case 0x2F:
-          return A * 100.0f / 255.0f; // Nível combustível
-        case 0x10:
-          return ((A * 256.0f) + B) / 100.0f; // MAF (g/s)
-        default:
-          return (float)A;
+      bool idMatch = (r.identifier == configRxId);
+      uint8_t respMode = mode + 0x40;
+      
+      if (idMatch && r.data[1] == respMode) {
+        bool pidMatch = false;
+        uint8_t dataStartIdx = 3;
+        if (pidLen == 2) {
+          uint16_t respPid = (r.data[2] << 8) | r.data[3];
+          if (respPid == pid) {
+            pidMatch = true;
+            dataStartIdx = 4;
+          }
+        } else {
+          if (r.data[2] == (pid & 0xFF)) {
+            pidMatch = true;
+            dataStartIdx = 3;
+          }
         }
-      }
-    }
-  }
-  return -999.0f;
-}
-
-// Envia pedido UDS (Service 22) de 29-bit física
-bool canSendUDS(uint32_t txId, uint16_t pid) {
-  twai_message_t m;
-  memset(&m, 0, sizeof(m));
-  m.identifier = txId;
-  m.extd = 1;
-  m.data_length_code = 8;
-  m.data[0] = 0x03; // Single Frame, 3 bytes adicionais
-  m.data[1] = 0x22; // Service 22
-  m.data[2] = (pid >> 8) & 0xFF;
-  m.data[3] = pid & 0xFF;
-  m.data[4] = 0x00;
-  m.data[5] = 0x00;
-  m.data[6] = 0x00;
-  m.data[7] = 0x00;
-  return twai_transmit(&m, pdMS_TO_TICKS(20)) == ESP_OK;
-}
-
-// Lê resposta de pedido UDS (Service 22)
-float canReadUDS(uint32_t txId, uint32_t rxId, uint16_t pid) {
-  if (!canSendUDS(txId, pid))
-    return -999.0f;
-  twai_message_t r;
-  uint32_t t0 = millis();
-  // Timeout 30ms para resposta UDS proprietária
-  while (millis() - t0 < 30) {
-    if (twai_receive(&r, pdMS_TO_TICKS(1)) == ESP_OK) {
-      if (r.extd && r.identifier == rxId && r.data[1] == 0x62) {
-        uint16_t respPid = (r.data[2] << 8) | r.data[3];
-        if (respPid == pid) {
-          uint8_t A = r.data[4], B = r.data[5];
-          switch (pid) {
-           case 0x1940: // Temperatura do Câmbio
-            return A - 40.0f;
-          case 0x115C: // Pressão de Óleo
-            return (A * 0.65f) - 17.5f;
-          case 0x1154: // Temperatura do Óleo
-            return A - 40.0f;
-          default:
-            return (float)A;
+        
+        if (pidMatch) {
+          int idx = dataStartIdx + srcOffset;
+          if (idx >= 8) return -999;
+          
+          if (len == 2) {
+            if (idx + 1 >= 8) return -999;
+            return (r.data[idx] << 8) | r.data[idx+1];
+          } else {
+            return r.data[idx];
           }
         }
       }
     }
   }
-  return -999.0f;
+  return -999;
 }
 
+float getSpeedFloat(int32_t rawVal) {
+  if (rawVal == -999) return -999.0f;
+  if (speedFormulaId == 1) return rawVal / 10.0f;
+  return (float)rawVal;
+}
+
+float getFuelRateFloat(int32_t rawVal) {
+  if (rawVal == -999) return -999.0f;
+  if (fuelFormulaId == 0) return rawVal / 20.0f; // standard L/h
+  if (fuelFormulaId == 1) {
+    float maf = rawVal / 100.0f; 
+    float ethRatio = sensors.ethanol / 100.0f;
+    if (ethRatio < 0.0f) ethRatio = 0.0f;
+    if (ethRatio > 1.0f) ethRatio = 1.0f;
+    float afrTarget = 14.7f * (1.0f - ethRatio) + 9.0f * ethRatio;
+    float density = 737.0f * (1.0f - ethRatio) + 789.0f * ethRatio;
+    return ((maf / afrTarget) * 3600.0f) / density;
+  }
+  return rawVal;
+}
 
 // Converte os bytes de resposta OBD2 em string correspondente no padrão SAE J2012
 String decodeDTC(uint8_t a, uint8_t b) {
@@ -310,7 +349,7 @@ String decodeDTC(uint8_t a, uint8_t b) {
 // ★ TASK CORE 0: COMUNICAÇÃO OBD2 VIA CAN ★
 // ==============================================================
 void obdTask(void *param) {
-  logEvent("[SYS] Task OBD (CAN direto) pronta.");
+  logEvent("[SYS] Task OBD (CAN dinâmico) pronta.");
 
   for (;;) {
     // STANDBY — aguarda o dashboard solicitar conexão
@@ -321,53 +360,63 @@ void obdTask(void *param) {
 
     // ESTADO 1: Iniciar driver TWAI
     obdState = 1;
-    logEvent("[CAN] Iniciando TWAI 29-bit @ 500kbps...");
+    logEvent("[CAN] Iniciando TWAI " + String(configCanType) + "-bit @ " + String(configBaud) + "kbps...");
     digitalWrite(LED_PIN, HIGH);
 
     if (!canInit()) {
       logEvent("[CAN] ERRO: falha ao instalar driver TWAI!");
       obdState = 9;
       digitalWrite(LED_PIN, LOW);
-      vTaskDelay(5000 /
-                 portTICK_PERIOD_MS); // espera 5s antes de tentar de novo
+      vTaskDelay(5000 / portTICK_PERIOD_MS); 
       continue;
     }
     logEvent("[CAN] Driver OK. Heap: " + String(ESP.getFreeHeap()));
     digitalWrite(LED_PIN, LOW);
 
-    // ESTADO 3: Handshake Robusto (v5.1 para Cabos Longos)
+    // ESTADO 3: Handshake Robusto
     obdState = 3;
     logEvent("[CAN] Handshake agressivo iniciando...");
     bool handshakeOk = false;
 
     for (int tentativa = 0; tentativa < 10 && !handshakeOk; tentativa++) {
       digitalWrite(LED_PIN, HIGH);
-      // 1. Acorda a ECU (Tester Present)
-      twai_message_t tp;
-      memset(&tp, 0, sizeof(tp));
-      tp.identifier = 0x18DB33F1;
-      tp.extd = 1;
-      tp.data_length_code = 8;
-      tp.data[0] = 0x02;
-      tp.data[1] = 0x3E;
-      tp.data[2] = 0x00;
-      twai_transmit(&tp, pdMS_TO_TICKS(10));
+      
+      // 1. Acorda a ECU (Tester Present se ativo)
+      if (configTesterPresent) {
+        twai_message_t tp;
+        memset(&tp, 0, sizeof(tp));
+        tp.identifier = configTxId;
+        tp.extd = (configCanType == 29) ? 1 : 0;
+        tp.data_length_code = 8;
+        tp.data[0] = 0x02;
+        tp.data[1] = 0x3E;
+        tp.data[2] = 0x00;
+        twai_transmit(&tp, pdMS_TO_TICKS(10));
+        vTaskDelay(100 / portTICK_PERIOD_MS); 
+      }
 
-      vTaskDelay(100 / portTICK_PERIOD_MS); // Pequena pausa pro carro processar
-
-      // 2. Manda o pedido de PIDs (Rajada)
-      canSendOBD(0x00);
+      // 2. Manda o pedido de handshake com o modo configurado
+      uint8_t hsLen = (configHandshakeMode == 0x22 || configHandshakeMode == 0x10 || configHandshakePid > 0xFF) ? 2 : 1;
+      canSendOBD(configHandshakePid, configHandshakeMode, hsLen);
 
       // 3. Escuta resposta ativa por 800ms
       uint32_t t0 = millis();
       while (millis() - t0 < 800) {
          twai_message_t r;
         if (twai_receive(&r, pdMS_TO_TICKS(5)) == ESP_OK) {
-          // Se receber resposta da ECU (0x41 0x00)
-          if (r.extd && r.data[1] == 0x41 && r.data[2] == 0x00) {
+          uint8_t respMode = configHandshakeMode + 0x40;
+          bool hsMatch = false;
+          if (r.identifier == configRxId && r.data[1] == respMode) {
+            if (hsLen == 2) {
+              uint16_t respPid = (r.data[2] << 8) | r.data[3];
+              if (respPid == configHandshakePid) hsMatch = true;
+            } else {
+              if (r.data[2] == (configHandshakePid & 0xFF)) hsMatch = true;
+            }
+          }
+          if (hsMatch) {
             handshakeOk = true;
-            logEvent("[CAN] Handshake OK! ECU detectada: 0x" +
-                     String(r.identifier, HEX));
+            logEvent("[CAN] Handshake OK! ECU detectada: 0x" + String(r.identifier, HEX));
             break;
           }
         }
@@ -386,22 +435,12 @@ void obdTask(void *param) {
       continue;
     }
 
-    // Leitura inteligente de Etanol no startup
-    float ethStartup = canReadSensor(0x52, 1);
-    if (ethStartup > -900.0f) {
-      xSemaphoreTake(dataMutex, portMAX_DELAY);
-      sensors.ethanol = ethStartup;
-      xSemaphoreGive(dataMutex);
-      logEvent("[CAN] Etanol lido no startup: " + String(ethStartup) + "%");
-    }
-
     // ESTADO 4: ONLINE — loop de leitura contínua
     obdState = 4;
     obdLastOk = millis();
-    ledBlink(3, 50); // v5.1: Sinal visual de sucesso
+    ledBlink(3, 50); 
     uint32_t lastTP = millis();
     uint32_t lastLoop = millis();
-    bool coldSoakChecked = false; // Gatilho de motor frio
 
     logEvent("[CAN] ★ ONLINE! Dashboard ativo.");
 
@@ -419,8 +458,8 @@ void obdTask(void *param) {
         
         twai_message_t m;
         memset(&m, 0, sizeof(m));
-        m.identifier = 0x18DB33F1; // Broadcast OBD2 29-bit
-        m.extd = 1;
+        m.identifier = configTxId; 
+        m.extd = (configCanType == 29) ? 1 : 0;
         m.data_length_code = 8;
         m.data[0] = 0x01; // 1 byte de dados
         m.data[1] = 0x03; // Modo 03 (Request DTCs)
@@ -434,8 +473,7 @@ void obdTask(void *param) {
         while (millis() - tStart < 800) {
           twai_message_t r;
           if (twai_receive(&r, pdMS_TO_TICKS(5)) == ESP_OK) {
-            // Resposta Modo 43 da ECU do Motor (0x18DAF111) ou outra ID física (0x18DAF1XX)
-            if (r.extd && (r.identifier & 0xFFFF0000) == 0x18DA0000 && r.data[1] == 0x43) {
+            if (r.identifier == configRxId && r.data[1] == 0x43) {
               respReceived = true;
               for (int i = 2; i < 8; i += 2) {
                 uint8_t a = r.data[i];
@@ -466,8 +504,8 @@ void obdTask(void *param) {
         
         twai_message_t m;
         memset(&m, 0, sizeof(m));
-        m.identifier = 0x18DB33F1;
-        m.extd = 1;
+        m.identifier = configTxId;
+        m.extd = (configCanType == 29) ? 1 : 0;
         m.data_length_code = 8;
         m.data[0] = 0x01;
         m.data[1] = 0x04; // Modo 04
@@ -479,7 +517,7 @@ void obdTask(void *param) {
         while (millis() - tStart < 800) {
           twai_message_t r;
           if (twai_receive(&r, pdMS_TO_TICKS(5)) == ESP_OK) {
-            if (r.extd && (r.identifier & 0xFFFF0000) == 0x18DA0000 && r.data[1] == 0x44) {
+            if (r.identifier == configRxId && r.data[1] == 0x44) {
               success = true;
               break;
             }
@@ -502,12 +540,12 @@ void obdTask(void *param) {
       lastLoop = millis();
 
       // Tester Present a cada 2s
-      if (millis() - lastTP > 2000) {
+      if (configTesterPresent && (millis() - lastTP > 2000)) {
         lastTP = millis();
         twai_message_t tp;
         memset(&tp, 0, sizeof(tp));
-        tp.identifier = 0x18DB33F1;
-        tp.extd = 1;
+        tp.identifier = configTxId;
+        tp.extd = (configCanType == 29) ? 1 : 0;
         tp.data_length_code = 8;
         tp.data[0] = 0x02;
         tp.data[1] = 0x3E;
@@ -517,237 +555,155 @@ void obdTask(void *param) {
 
       // --- LOOP ULTRA-RÁPIDO (20Hz / 50ms) ---
       uint32_t loopStart = millis();
-      float rpm = canReadSensor(0x0C, 2);
-      float spd = canReadSensor(0x0D, 1);
+      int32_t rawRpm = canReadSensorRaw(rpmPid, rpmBytes, rpmSrcOffset, rpmMode);
 
-      // --- ESCALONADOR ESTRETO DE 4 NÍVEIS ---
-      static uint32_t loopCount = 0;
-      static int slowIndex = 0;
+      // --- ESTRUTURA v7.0: ESCALONADOR skipCount COM MÁXIMO DE 2 CONSULTAS POR CICLO ---
       uint32_t now = millis();
 
-      // 1. RÁPIDO (100ms): Alternado a cada 2 iterações (50ms * 2 = 100ms)
-      if (loopCount % 2 == 0) {
-        if (loopCount % 4 == 0) {
-          float thr = canReadSensor(0x11, 1);
-          if (thr > -900.0f) {
-            xSemaphoreTake(dataMutex, portMAX_DELAY);
-            sensors.throttle = thr;
-            xSemaphoreGive(dataMutex);
-          }
-        } else {
-          float ped = canReadSensor(0x49, 1);
-          if (ped > -900.0f) {
-            xSemaphoreTake(dataMutex, portMAX_DELAY);
-            sensors.pedal = ped;
-            xSemaphoreGive(dataMutex);
-          }
-        }
-      }
-
-      // 2. MÉDIO (500ms): Leitura da Carga do Motor
-      if (loopCount % 10 == 0) {
-        float ld = canReadSensor(0x04, 1);
-        if (ld > -900.0f) {
-          xSemaphoreTake(dataMutex, portMAX_DELAY);
-          sensors.load = ld;
-          xSemaphoreGive(dataMutex);
-        }
-      }
-
-      // 3. MÉDIO-RÁPIDO (500ms): Leitura do Consumo Físico L/h a 2Hz (500ms)
-      if (loopCount % 10 == 5) {
-        float fr = canReadSensor(0x5E, 2);
-        if (fr > -900.0f && fr > 0.001f) {
-          xSemaphoreTake(dataMutex, portMAX_DELAY);
-          sensors.fuelRate = fr;
-          xSemaphoreGive(dataMutex);
-        } else {
-          // Fallback químico estequiométrico a 2Hz
-          float maf = canReadSensor(0x10, 2);
-          if (maf > -900.0f) {
-            float ethRatio = 0.0f;
-            xSemaphoreTake(dataMutex, portMAX_DELAY);
-            ethRatio = sensors.ethanol / 100.0f;
-            xSemaphoreGive(dataMutex);
-
-            if (ethRatio < 0.0f) ethRatio = 0.0f;
-            if (ethRatio > 1.0f) ethRatio = 1.0f;
-
-            float afrTarget = 14.7f * (1.0f - ethRatio) + 9.0f * ethRatio;
-      float density = 737.0f * (1.0f - ethRatio) + 789.0f * ethRatio; // Densidade real g/L
-
-            float calculatedFuelRate = ((maf / afrTarget) * 3600.0f) / density;
-            
-            xSemaphoreTake(dataMutex, portMAX_DELAY);
-            sensors.fuelRate = calculatedFuelRate;
-            xSemaphoreGive(dataMutex);
-          }
-        }
-      }
-
-      // 3. LENTO (500ms ciclo completo / 100ms por slot circular): Executado nas iterações ímpares
-      if (loopCount % 2 == 1) {
-        static uint8_t ambFailed = 0;
-        static uint32_t ambCooldown = 0;
-        
-        static uint8_t catFailed = 0;
-        static uint32_t catCooldown = 0;
-        
-        static uint8_t fuelFailed = 0;
-        static uint32_t fuelCooldown = 0;
-
-        switch (slowIndex) {
-          case 0: {
-            float cool = canReadSensor(0x05, 1);
-            if (cool > -900.0f) {
-              xSemaphoreTake(dataMutex, portMAX_DELAY);
-              sensors.coolant = cool;
-              xSemaphoreGive(dataMutex);
-            }
-            break;
-          }
-          case 1: {
-            float volt = canReadSensor(0x42, 2);
-            if (volt > -900.0f) {
-              xSemaphoreTake(dataMutex, portMAX_DELAY);
-              sensors.voltage = volt;
-              xSemaphoreGive(dataMutex);
-            }
-            break;
-          }
-          case 2: {
-            if (now >= ambCooldown) {
-              float amb = canReadSensor(0x46, 1);
-              if (amb > -900.0f) {
-                ambFailed = 0;
-                xSemaphoreTake(dataMutex, portMAX_DELAY);
-                sensors.ambientTemp = amb;
-                xSemaphoreGive(dataMutex);
-              } else {
-                ambFailed++;
-                if (ambFailed >= 5) {
-                  ambCooldown = now + 30000; // 30s de cooldown
-                  logEvent("[CAN] PID Temp. Ambiente (0x46) em cooldown por falhas.");
-                }
-              }
-            }
-            break;
-          }
-          case 3: {
-            if (now >= catCooldown) {
-              float cat = canReadSensor(0x3C, 2);
-              if (cat > -900.0f) {
-                catFailed = 0;
-                xSemaphoreTake(dataMutex, portMAX_DELAY);
-                sensors.catalyst = cat;
-                xSemaphoreGive(dataMutex);
-              } else {
-                catFailed++;
-                if (catFailed >= 5) {
-                  catCooldown = now + 30000; // 30s de cooldown
-                  logEvent("[CAN] PID Catalisador (0x3C) em cooldown por falhas.");
-                }
-              }
-            }
-            break;
-          }
-          case 4: {
-            static uint32_t lastFuelQuery = 0;
-            uint32_t nowMs = millis();
-
-            xSemaphoreTake(dataMutex, portMAX_DELAY);
-            float currentRpm = sensors.rpm;
-            xSemaphoreGive(dataMutex);
-
-            // v6.5: Polling dinâmico — 10 segundos correndo (cruzeiro) vs 1 segundo parado (abastecimento)
-            uint32_t queryInterval = (currentRpm >= 800.0f) ? 10000 : 1000;
-
-            if ((lastFuelQuery == 0 || nowMs - lastFuelQuery >= queryInterval) && nowMs >= fuelCooldown) {
-              lastFuelQuery = nowMs;
-              float fRaw = canReadSensor(0x2F, 1);
-              if (fRaw > -900.0f) {
-                fuelFailed = 0;
-                if (currentRpm >= 800.0f) {
-                  // Modo Cruzeiro: amortecimento ultra-lento para ignorar chacoalhadas nas curvas
-                  if (emaFuel < 0) {
-                    emaFuel = fRaw; // Snap de segurança se a primeira leitura for com motor ligado
-                  } else {
-                    emaFuel = (0.01f * fRaw) + (0.99f * emaFuel);
-                  }
-                } else {
-                  // Motor desligado/cranking (ignição ligada / parado): leitura crua e direta ao vivo a 1Hz!
-                  emaFuel = fRaw;
-                }
-
-                xSemaphoreTake(dataMutex, portMAX_DELAY);
-                sensors.fuelLevel = emaFuel;
-                xSemaphoreGive(dataMutex);
-              } else {
-                fuelFailed++;
-                if (fuelFailed >= 5) {
-                  fuelCooldown = nowMs + 30000; // 30s de cooldown
-                  logEvent("[CAN] PID Nivel Combustivel (0x2F) em cooldown por falhas.");
-                }
-              }
-            }
-            break;
-          }
-        }
-        slowIndex = (slowIndex + 1) % 5;
-      }
-
-      // Atualização periódica ultra-lenta do Etanol a cada 5 minutos (300s) com cooldown de falha
-      static uint32_t lastEthUpdate = 0;
-      static uint8_t ethFailedCount = 0;
-      static uint32_t ethCooldownUntil = 0;
-      if (lastEthUpdate == 0 || now - lastEthUpdate >= 300000) {
-        if (now >= ethCooldownUntil) {
-          float eth = canReadSensor(0x52, 1);
-          lastEthUpdate = now; // Evita loop infinito de timeout no boot/falha
-          if (eth > -900.0f) {
-            ethFailedCount = 0;
-            xSemaphoreTake(dataMutex, portMAX_DELAY);
-            sensors.ethanol = eth;
-            xSemaphoreGive(dataMutex);
-            logEvent("[CAN] Etanol misturado atualizado: " + String(eth) + "%");
-          } else {
-            ethFailedCount++;
-            if (ethFailedCount >= 3) {
-              ethCooldownUntil = now + 600000; // 10 min de cooldown para desativar falha sequencial
-              logEvent("[CAN] PID Etanol (0x52) indisponivel. Entrando em cooldown de 10 min.");
-            }
-          }
-        }
-      }
-
-      // v6.5: Atualiza struct principal com tratamento de falhas e shutdown
-      if (rpm > -900.0f) {
-        failedQueries = 0; // Reseta o contador de falhas consecutivas
+      // Atualiza RPM
+      if (rawRpm > -900) {
+        failedQueries = 0; 
         xSemaphoreTake(dataMutex, portMAX_DELAY);
-        sensors.rpm = rpm;
-        if (spd > -900.0f) sensors.speed = spd;
-        obdLastOk = millis();
+        sensors.rpm = (float)rawRpm;
+        obdLastOk = now;
         xSemaphoreGive(dataMutex);
       } else {
-        failedQueries++; // Incrementa falhas se a ECU não responder
+        failedQueries++;
       }
 
-      // v6.4: Gatilho Inteligente de Desligamento (5 falhas consecutivas = 250ms de silêncio)
-      if (failedQueries >= 5 && obdState == 4) {
-        logEvent("[CAN] Falha de comunicacao consecutiva (ECU offline). Preservando viagem...");
-        failedQueries = 0;
-        emaFuel = -1.0f; // v6.5: Reseta o filtro de combustível no desligamento
+      // Procura o sensor mais prioritário/atrasado na fila do scheduler
+      int bestIndex = -1;
+      float highestRatio = -1.0f;
 
-        // 1. SALVA A VIAGEM NA FLASH IMEDIATAMENTE (ANTES DE QUALQUER COISA)
-        File f = LittleFS.open("/trip_current.json", "w");
-        if (f) {
-          f.printf("{\"ts\":%u,\"dist\":%.2f,\"fuel\":%.3f,\"ttot\":%u,\"tdri\":%u,\"price\":%.2f}", 
-                   lastKnownEpoch, tripDist, tripFuel, tripTimeTot, tripTimeDri, fuelPrice);
-          f.close();
-          logEvent("[TRIP] Viagem diária salva com sucesso no desligamento!");
+      for (int i = 0; i < numSchedSensors; i++) {
+        // Ignora se estiver desativado permanentemente na sessao
+        if (schedSensors[i].cooldownUntil == 0xFFFFFFFF) {
+          continue;
         }
 
-        // 2. ZERA APENAS AS MÉTRICAS DOS PONTEIROS PARA O CELULAR IR A ZERO
+        // Ignora se estiver em cooldown ativo
+        if (schedSensors[i].cooldownUntil > 0 && now < schedSensors[i].cooldownUntil) {
+          continue;
+        }
+
+        // Incrementa o contador do ciclo para este sensor
+        schedSensors[i].skipCounter++;
+
+        // Calcula a taxa de atraso em relação ao esperado
+        float ratio = (float)schedSensors[i].skipCounter / (float)(schedSensors[i].skipCount + 1);
+        if (ratio >= 1.0f && ratio > highestRatio) {
+          highestRatio = ratio;
+          bestIndex = i;
+        }
+      }
+
+      // Se houver um sensor pronto para leitura, executa-o neste ciclo (máx 1 secundário por loop)
+      if (bestIndex != -1) {
+        OBD2Sensor& s = schedSensors[bestIndex];
+        int32_t rawVal = -999;
+        
+        bool isBootTest = (s.failedCount >= 50); // Se iniciou em 50, é teste único no boot
+
+        if (s.destSensorId == 4) { // FuelRate / Consumo
+          // Lógica especial para Consumo Físico com fallback automático e permanente para MAF
+          static bool useMafOnly = false;
+          if (useMafOnly) {
+            int32_t rawMaf = canReadSensorRaw(0x10, 2, 0, 0x01);
+            if (rawMaf > -900) {
+              tripFuelRate = getFuelRateFloat(rawMaf);
+              rawVal = rawMaf;
+            }
+          } else {
+            int32_t fr = canReadSensorRaw(s.pid, s.nBytes, s.srcOffset, s.mode);
+            if (fr > -900 && fr > 0) {
+              tripFuelRate = getFuelRateFloat(fr);
+              rawVal = fr;
+            } else {
+              int32_t rawMaf = canReadSensorRaw(0x10, 2, 0, 0x01);
+              if (rawMaf > -900) {
+                tripFuelRate = getFuelRateFloat(rawMaf);
+                rawVal = rawMaf;
+              }
+              s.failedCount++;
+              if (s.failedCount >= 5) {
+                useMafOnly = true;
+                logEvent("[CAN] PID 0x" + String(s.pid, HEX) + " (FuelRate) indisponivel. Fallback MAF.");
+                s.failedCount = 0;
+              }
+            }
+          }
+        } else if (s.destSensorId == 11) { // FuelLevel / Combustível
+          // Lógica especial para Nível de Combustível com filtro EMA
+          int32_t fRaw = canReadSensorRaw(s.pid, s.nBytes, s.srcOffset, s.mode);
+          if (fRaw > -900) {
+            float currentRpm = 0.0f;
+            xSemaphoreTake(dataMutex, portMAX_DELAY);
+            currentRpm = sensors.rpm;
+            xSemaphoreGive(dataMutex);
+
+            if (currentRpm >= 800.0f) {
+              if (emaFuel < 0) {
+                emaFuel = (float)fRaw;
+              } else {
+                emaFuel = (0.01f * (float)fRaw) + (0.99f * emaFuel);
+              }
+            } else {
+              emaFuel = (float)fRaw;
+            }
+            rawVal = (int32_t)emaFuel;
+          }
+        } else {
+          // Consulta OBD genérica padrão
+          rawVal = canReadSensorRaw(s.pid, s.nBytes, s.srcOffset, s.mode);
+        }
+
+        // Processamento de sucesso ou erro/cooldown
+        if (rawVal > -900) {
+          if (isBootTest) {
+            logEvent("[CAN] Sensor " + String(s.name) + " respondeu no boot! Reabilitado na Flash.");
+            s.failedCount = 0;
+            s.cooldownUntil = 0;
+            saveUnsupportedSensors(); // Remove do arquivo da Flash
+          } else {
+            s.failedCount = 0;
+          }
+          
+          xSemaphoreTake(dataMutex, portMAX_DELAY);
+          *(s.valuePtr) = (float)rawVal;
+          if (s.destSensorId == 0) { // Speed
+            tripSpeed = getSpeedFloat(rawVal);
+          }
+          xSemaphoreGive(dataMutex);
+        } else {
+          if (isBootTest) {
+            // Se falhou no teste único de boot, desativa imediatamente pela sessão
+            s.cooldownUntil = 0xFFFFFFFF;
+            logEvent("[CAN] Sensor " + String(s.name) + " ausente no boot. Desativado na sessao.");
+          } else {
+            s.failedCount++;
+            if (s.failedCount == 5) {
+              s.cooldownUntil = now + 30000; // 30s de silêncio
+              logEvent("[CAN] PID 0x" + String(s.pid, HEX) + " (" + String(s.name) + ") falhou consecutivamente. Cooldown 30s.");
+            } else if (s.failedCount >= 50) {
+              s.cooldownUntil = 0xFFFFFFFF; // Desativação permanente
+              saveUnsupportedSensors(); // Salva novo status na Flash
+              logEvent("[CAN] PID 0x" + String(s.pid, HEX) + " (" + String(s.name) + ") inativo (50 falhas). Desativado e salvo na Flash.");
+            }
+          }
+        }
+
+        s.skipCounter = 0;
+      }
+
+      // v6.4: Gatilho de Motor desligado/Desligamento (5 falhas consecutivas do RPM = 250ms de silêncio)
+      if (failedQueries >= 5 && obdState == 4) {
+        logEvent("[CAN] ECU Offline (motor desligado). Preservando viagem...");
+        failedQueries = 0;
+        emaFuel = -1.0f;
+
+        saveTripPending = true; // Dispara salvamento em background
+        logEvent("[TRIP] Solicitado salvamento de desligamento em background.");
+
         xSemaphoreTake(dataMutex, portMAX_DELAY);
         sensors.rpm = 0;
         sensors.speed = 0;
@@ -756,27 +712,26 @@ void obdTask(void *param) {
         sensors.load = 0;
         sensors.fuelRate = 0;
         sensors.boost = 0;
+        tripSpeed = 0;
+        tripFuelRate = 0;
         xSemaphoreGive(dataMutex);
 
-        // 3. DESCONECTA E SAI DO LOOP DE TELEMETRIA
-        obdState = 9; 
+        obdState = 9;
         break;
       }
 
-      // v6.9: Salva a duração real de processamento do loop CAN na struct
+      // Medição real da duração do loop para depuração no App
       uint32_t loopDuration = millis() - loopStart;
       xSemaphoreTake(dataMutex, portMAX_DELAY);
       sensors.loopMs = (float)loopDuration;
       xSemaphoreGive(dataMutex);
 
-      loopCount = (loopCount + 1) % 200;
-
-      // Controle estrito de frequência de 20Hz (50ms por iteração)
+      // Controle de frequência estrito a 20Hz (50ms por iteração)
       uint32_t elapsed = millis() - loopStart;
       if (elapsed < 50) {
         vTaskDelay(pdMS_TO_TICKS(50 - elapsed));
       } else {
-        vTaskDelay(pdMS_TO_TICKS(1)); // Força yield se a rede engasgar
+        vTaskDelay(pdMS_TO_TICKS(1));
       }
     }
 
@@ -790,16 +745,329 @@ void obdTask(void *param) {
 }
 
 // ==============================================================
+// ★ AUXILIAR: PARSER DO COMANDO DE CONFIGURAÇÃO DE PERFIL v7.0 ★
+// ==============================================================
+String getValue(String data, char separator, int index) {
+  int found = 0;
+  int strIndex[] = {0, -1};
+  int maxIndex = data.length() - 1;
+  for (int i = 0; i <= maxIndex && found <= index; i++) {
+    if (data.charAt(i) == separator || i == maxIndex) {
+      found++;
+      strIndex[0] = strIndex[1] + 1;
+      strIndex[1] = (i == maxIndex) ? i + 1 : i;
+    }
+  }
+  return found > index ? data.substring(strIndex[0], strIndex[1]) : "";
+}
+
+// ==============================================================
+// ★ TASK CORE 0: ESCRITA EM FLASH EM SEGUNDO PLANO (LITTLEFS) ★
+// ==============================================================
+void fsTask(void *param) {
+  logEvent("[SYS] Task FS (escritas em Flash) pronta no Core 0.");
+  for (;;) {
+    if (saveTripPending) {
+      saveTripPending = false;
+      
+      // Cópia atômica das variáveis sob o mutex
+      xSemaphoreTake(dataMutex, portMAX_DELAY);
+      uint32_t copyEpoch = lastKnownEpoch;
+      float copyDist = tripDist;
+      float copyFuel = tripFuel;
+      uint32_t copyTimeTot = tripTimeTot;
+      uint32_t copyTimeDri = tripTimeDri;
+      float copyPrice = fuelPrice;
+      xSemaphoreGive(dataMutex);
+
+      File f = LittleFS.open("/trip_current.json", "w");
+      if (f) {
+        f.printf("{\"ts\":%u,\"dist\":%.2f,\"fuel\":%.3f,\"ttot\":%u,\"tdri\":%u,\"price\":%.2f}", 
+                 copyEpoch, copyDist, copyFuel, copyTimeTot, copyTimeDri, copyPrice);
+        f.close();
+        logEvent("[TRIP] Backup de viagem salvo na Flash via background task.");
+      }
+    }
+    
+    if (saveUnsupportedPending) {
+      saveUnsupportedPending = false;
+      
+      String unsupportedContent = "";
+      xSemaphoreTake(dataMutex, portMAX_DELAY);
+      for (int i = 0; i < numSchedSensors; i++) {
+        if (schedSensors[i].cooldownUntil == 0xFFFFFFFF) {
+          unsupportedContent += String(schedSensors[i].destSensorId) + " ";
+        }
+      }
+      xSemaphoreGive(dataMutex);
+
+      File f = LittleFS.open("/unsupported.dat", "w");
+      if (f) {
+        f.print(unsupportedContent);
+        f.close();
+        logEvent("[SYS] Lista de sensores nao suportados salva na Flash em background.");
+      }
+    }
+
+    if (saveHistPending) {
+      saveHistPending = false;
+      
+      // Executa escrita do histórico sem fragmentação de heap (buffer estático seguro)
+      char histBuffer[1024];
+      memset(histBuffer, 0, sizeof(histBuffer));
+      strcpy(histBuffer, "[]");
+      
+      if (LittleFS.exists("/trip_hist.json")) {
+        File f = LittleFS.open("/trip_hist.json", "r");
+        if (f) {
+          size_t len = f.readBytes(histBuffer, sizeof(histBuffer) - 1);
+          histBuffer[len] = '\0';
+          f.close();
+        }
+      }
+      
+      size_t len = strlen(histBuffer);
+      while (len > 0 && (histBuffer[len - 1] == ' ' || histBuffer[len - 1] == '\r' || histBuffer[len - 1] == '\n')) {
+        histBuffer[--len] = '\0';
+      }
+      
+      char entry[160];
+      snprintf(entry, sizeof(entry), "{\"ts\":%u,\"dist\":%.2f,\"fuel\":%.3f,\"ttot\":%u,\"tdri\":%u,\"price\":%.2f}", 
+               histPendingTs, histPendingDist, histPendingFuel, histPendingTimeTot, histPendingTimeDri, histPendingPrice);
+               
+      if (len <= 2) {
+        snprintf(histBuffer, sizeof(histBuffer), "[%s]", entry);
+      } else {
+        if (histBuffer[len - 1] == ']') {
+          histBuffer[len - 1] = '\0';
+          len--;
+        }
+        if (len + strlen(entry) + 3 < sizeof(histBuffer)) {
+          strcat(histBuffer, ",");
+          strcat(histBuffer, entry);
+          strcat(histBuffer, "]");
+        }
+      }
+      
+      int entryCount = 0;
+      for (int i = 0; histBuffer[i] != '\0'; i++) {
+        if (histBuffer[i] == '{') entryCount++;
+      }
+      
+      char *ptr = histBuffer;
+      while (entryCount > 7) {
+        char *firstOpen = strchr(ptr, '{');
+        if (firstOpen) {
+          char *secondOpen = strchr(firstOpen + 1, '{');
+          if (secondOpen) {
+            size_t secLen = strlen(secondOpen);
+            memmove(ptr + 1, secondOpen, secLen + 1);
+            ptr[0] = '[';
+            entryCount--;
+          } else {
+            break;
+          }
+        } else {
+          break;
+        }
+      }
+      
+      File f = LittleFS.open("/trip_hist.json", "w");
+      if (f) {
+        f.print(histBuffer);
+        f.close();
+        logEvent("[TRIP] Historico de viagens atualizado na Flash em background.");
+      }
+      
+      LittleFS.remove("/trip_current.json");
+    }
+
+    if (saveConfigPending) {
+      saveConfigPending = false;
+      
+      char cmdCopy[512];
+      xSemaphoreTake(dataMutex, portMAX_DELAY);
+      strcpy(cmdCopy, pendingConfigCmd);
+      xSemaphoreGive(dataMutex);
+      
+      File f = LittleFS.open("/car_profile.cfg", "w");
+      if (f) {
+        f.print(cmdCopy);
+        f.close();
+        logEvent("[CFG] Perfil salvo na Flash em background.");
+      }
+    }
+    
+    vTaskDelay(500 / portTICK_PERIOD_MS);
+  }
+}
+
+// ==============================================================
+// ★ PERSISTÊNCIA DE SENSORES NÃO SUPORTADOS (LITTLEFS) ★
+// ==============================================================
+void saveUnsupportedSensors() {
+  saveUnsupportedPending = true; // Apenas sinaliza a task de background
+  logEvent("[SYS] Solicitado salvamento de nao suportados em background.");
+}
+
+void loadUnsupportedSensors() {
+  if (!LittleFS.exists("/unsupported.dat")) return;
+  File f = LittleFS.open("/unsupported.dat", "r");
+  if (!f) return;
+  String content = f.readString();
+  f.close();
+  
+  logEvent("[SYS] Carregando sensores nao suportados: " + content);
+  for (int i = 0; i < numSchedSensors; i++) {
+    String searchStr = " " + String(schedSensors[i].destSensorId) + " ";
+    String text = " " + content + " ";
+    if (text.indexOf(searchStr) >= 0) {
+      schedSensors[i].failedCount = 50; // Inicia marcado para teste único no boot
+      logEvent("[SYS] Sensor " + String(schedSensors[i].name) + " pre-configurado como nao suportado.");
+    }
+  }
+}
+
+void applyConfigString(String cmd) {
+  cmd.trim();
+  String sBaud = getValue(cmd, ';', 1);
+  if (sBaud == "") return;
+  
+  configBaud = sBaud.toInt();
+  configCanType = getValue(cmd, ';', 2).toInt();
+  configTxId = strtoul(getValue(cmd, ';', 3).c_str(), NULL, 16);
+  configRxId = strtoul(getValue(cmd, ';', 4).c_str(), NULL, 16);
+  configTesterPresent = getValue(cmd, ';', 5).toInt();
+  
+  String sHandshake = getValue(cmd, ';', 6);
+  sHandshake.trim();
+  if (sHandshake.length() <= 2) {
+    configHandshakeMode = 0x01;
+    configHandshakePid = strtoul(sHandshake.c_str(), NULL, 16);
+  } else if (sHandshake.length() == 4) {
+    configHandshakeMode = strtoul(sHandshake.substring(0, 2).c_str(), NULL, 16);
+    configHandshakePid = strtoul(sHandshake.substring(2, 4).c_str(), NULL, 16);
+  } else if (sHandshake.length() == 6) {
+    configHandshakeMode = strtoul(sHandshake.substring(0, 2).c_str(), NULL, 16);
+    configHandshakePid = strtoul(sHandshake.substring(2, 6).c_str(), NULL, 16);
+  } else {
+    configHandshakeMode = 0x01;
+    configHandshakePid = strtoul(sHandshake.c_str(), NULL, 16);
+  }
+  
+  speedFormulaId = getValue(cmd, ';', 7).toInt();
+  fuelFormulaId = getValue(cmd, ';', 8).toInt();
+  
+  numSchedSensors = 0;
+  for (int idx = 9; idx < MAX_SENSORS + 9; idx++) {
+    String sensorStr = getValue(cmd, ';', idx);
+    if (sensorStr == "") break;
+    
+    String sPid = getValue(sensorStr, ':', 0);
+    sPid.trim();
+    uint16_t pid = 0;
+    uint8_t mode = 0x01;
+    
+    if (sPid.length() <= 2) {
+      mode = 0x01;
+      pid = strtoul(sPid.c_str(), NULL, 16);
+    } else if (sPid.length() == 4) {
+      mode = strtoul(sPid.substring(0, 2).c_str(), NULL, 16);
+      pid = strtoul(sPid.substring(2, 4).c_str(), NULL, 16);
+    } else if (sPid.length() == 6) {
+      mode = strtoul(sPid.substring(0, 2).c_str(), NULL, 16);
+      pid = strtoul(sPid.substring(2, 6).c_str(), NULL, 16);
+    } else {
+      mode = 0x01;
+      pid = strtoul(sPid.c_str(), NULL, 16);
+    }
+    
+    uint8_t len = getValue(sensorStr, ':', 1).toInt();
+    uint16_t skip = getValue(sensorStr, ':', 2).toInt();
+    uint8_t srcOffset = getValue(sensorStr, ':', 3).toInt();
+    uint8_t sensorId = getValue(sensorStr, ':', 4).toInt();
+    
+    float* valPtr = nullptr;
+    const char* name = "";
+    switch (sensorId) {
+      case 0: valPtr = &sensors.speed; name = "Speed"; break;
+      case 1: valPtr = &sensors.throttle; name = "Throttle"; break;
+      case 2: valPtr = &sensors.pedal; name = "Pedal"; break;
+      case 3: valPtr = &sensors.load; name = "Load"; break;
+      case 4: valPtr = &sensors.fuelRate; name = "FuelRate"; break;
+      case 5: valPtr = &sensors.boost; name = "Boost"; break;
+      case 6: valPtr = &sensors.coolant; name = "Coolant"; break;
+      case 7: valPtr = &sensors.catalyst; name = "Catalyst"; break;
+      case 8: valPtr = &sensors.ambientTemp; name = "Ambient"; break;
+      case 9: valPtr = &sensors.ethanol; name = "Ethanol"; break;
+      case 10: valPtr = &sensors.voltage; name = "Voltage"; break;
+      case 11: valPtr = &sensors.fuelLevel; name = "FuelLevel"; break;
+      case 12:
+        rpmPid = pid;
+        rpmMode = mode;
+        rpmBytes = len;
+        rpmSrcOffset = srcOffset;
+        logEvent("[CFG] RPM reconfigurado: Mode=0x" + String(mode, HEX) + ", PID=0x" + String(pid, HEX) + ", Bytes=" + String(len) + ", Offset=" + String(rpmSrcOffset));
+        continue;
+      case 13: valPtr = &sensors.oilPres; name = "OilPress"; break;
+      case 14: valPtr = &sensors.fuelPress; name = "FuelPress"; break;
+      case 15: valPtr = &sensors.oilTemp; name = "OilTemp"; break;
+      case 16: valPtr = &sensors.iat; name = "IAT"; break;
+      case 17: valPtr = &sensors.egt; name = "EGT"; break;
+      case 18: valPtr = &sensors.afr; name = "AFR"; break;
+      case 19: valPtr = &sensors.lambda; name = "Lambda"; break;
+      case 20: valPtr = &sensors.timing; name = "Timing"; break;
+    }
+    
+    if (valPtr != nullptr && numSchedSensors < MAX_SENSORS) {
+      schedSensors[numSchedSensors] = {
+        pid,
+        mode,
+        len,
+        skip,
+        0,
+        valPtr,
+        0,
+        0,
+        name,
+        srcOffset,
+        sensorId
+      };
+      numSchedSensors++;
+    }
+  }
+  
+  loadUnsupportedSensors(); // Carrega o histórico de não suportados para os sensores agendados
+  
+  logEvent("[CFG] Perfil aplicado. Baud=" + String(configBaud) + "K, CAN=" + String(configCanType) + "-bit");
+  
+  xSemaphoreTake(dataMutex, portMAX_DELAY);
+  obdState = 1;
+  xSemaphoreGive(dataMutex);
+}
+
+void parseConfigCommand(String cmd) {
+  logEvent("[CFG] Nova configuracao recebida via BT: " + cmd);
+  
+  xSemaphoreTake(dataMutex, portMAX_DELAY);
+  snprintf(pendingConfigCmd, sizeof(pendingConfigCmd), "%s", cmd.c_str());
+  saveConfigPending = true;
+  xSemaphoreGive(dataMutex);
+  
+  applyConfigString(cmd);
+}
+
+// ==============================================================
 // ★ SETUP ★
 // ==============================================================
 void setup() {
   Serial.begin(115200);
   Serial.println("\n╔══════════════════════════════════════════╗");
-  Serial.println("║   PulseDash v6.5 — CAN Direto Edition    ║");
-  Serial.println("║   Onix 2026 × SN65HVD230 × ESP32         ║");
+  Serial.println("║   PulseDash v7.0 — CAN Dinamico Edition  ║");
+  Serial.println("║   Universal OBD2 × SN65HVD230 × ESP32    ║");
   Serial.println("╚══════════════════════════════════════════╝");
   logEvent("[SYS] Heap inicial: " + String(ESP.getFreeHeap()) + " bytes");
-  logEvent("[0s] PulseDash v6.5 Iniciado (CAN direto).");
+  logEvent("[0s] PulseDash v7.0 Iniciado.");
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
 
@@ -809,6 +1077,21 @@ void setup() {
     Serial.println("[ERRO] LittleFS falhou!");
   } else {
     Serial.println("[OK] LittleFS pronto.");
+  }
+
+  // Carrega configuração salva ou inicia com a default (Onix 2026)
+  if (!LittleFS.exists("/car_profile.cfg")) {
+    String defCfg = "CFG;500;29;18db33f1;18daf111;1;00;0;0;0d:1:1:0:0;11:1:3:0:1;49:1:3:0:2;04:1:9:0:3;5e:2:9:0:4;0b:1:0:0:5;05:1:99:0:6;3c:2:99:0:7;46:1:99:0:8;52:1:5999:0:9;42:2:99:0:10;2f:1:99:0:11;0c:2:0:0:12";
+    applyConfigString(defCfg);
+  } else {
+    File f = LittleFS.open("/car_profile.cfg", "r");
+    if (f) {
+      String savedCfg = f.readString();
+      f.close();
+      if (savedCfg.startsWith("CFG;")) {
+        applyConfigString(savedCfg);
+      }
+    }
   }
 
   Serial.println("[SYS] LittleFS inicializado com sucesso.");
@@ -852,6 +1135,12 @@ void setup() {
   logEvent("[SYS] PulseDash pronto para conexões Bluetooth.");
 
   btRequested = true;
+  
+  // Cria a task de escrita em Flash em background no Core 0
+  xTaskCreatePinnedToCore(
+      fsTask, "FS", 4096, NULL, 1, NULL,
+      0);
+      
   xTaskCreatePinnedToCore(
       obdTask, "OBD", 8192, NULL, 1, NULL,
       0); // v5.0: Stack aumentado para 8192 para segurança com LittleFS
@@ -861,9 +1150,11 @@ void setup() {
 // ★ PROCESSAMENTO DE COMANDOS BLUETOOTH NATIVO ★
 // ==============================================================
 void processBluetoothCommand(String jsonStr) {
+  if (jsonStr.startsWith("CFG;")) {
+    parseConfigCommand(jsonStr);
+    return;
+  }
   if (jsonStr.indexOf("\"cmd\":\"sync\"") > 0) {
-    // Reset da simulação de DTC ao reconectar (sincronismo inicial)
-    simDtcsCleared = false;
     
     int tsIdx = jsonStr.indexOf("\"ts\":");
     if (tsIdx > 0) {
@@ -878,7 +1169,7 @@ void processBluetoothCommand(String jsonStr) {
       } else if (day > lastDay) {
         // Virada de dia pelo App!
         logEvent("[BT] App conectou em novo dia. Salvando historico.");
-        saveTripToHistory(lastKnownEpoch);
+        triggerSaveHistory(lastKnownEpoch);
         lastKnownEpoch = ts;
       } else {
         lastKnownEpoch = ts; // Mantém atualizado no dia
@@ -937,15 +1228,10 @@ void processBluetoothCommand(String jsonStr) {
       // Se conectado ao carro, avisa a task OBD CAN para fazer a leitura física
       dtcScanPending = true;
     } else {
-      // Se na bancada, envia os DTCs de simulação
-      String codesJson = "";
-      if (!simDtcsCleared) {
-        codesJson = "\"P0300\",\"P0115\",\"U0100\"";
-      }
-      String jsonResp = "{\"cmd\":\"dtc_data\",\"codes\":[" + codesJson + "]}";
-      vTaskDelay(800 / portTICK_PERIOD_MS); // Simula o tempo de escaneamento
+      // Retorna sem erros quando não estiver conectado ao carro (sem simulação)
+      String jsonResp = "{\"cmd\":\"dtc_data\",\"codes\":[]}";
       SerialBT.println(jsonResp);
-      logEvent("[BT] Simulado DTC Scan enviado: " + jsonResp);
+      logEvent("[BT] DTC Scan vazio (sem simulacao) enviado: " + jsonResp);
     }
   } else if (jsonStr.indexOf("\"cmd\":\"dtc_clear\"") > 0) {
     logEvent("[BT] Requisicao de DTC Clear recebida.");
@@ -956,12 +1242,10 @@ void processBluetoothCommand(String jsonStr) {
     if (state == 4) {
       dtcClearPending = true;
     } else {
-      // Simula sucesso de limpeza e limpa a lista simulada
-      simDtcsCleared = true;
-      vTaskDelay(600 / portTICK_PERIOD_MS);
+      // Retorna sucesso de limpeza direto (sem simulação)
       String jsonResp = "{\"cmd\":\"dtc_clear_result\",\"success\":true}";
       SerialBT.println(jsonResp);
-      logEvent("[BT] Simulado DTC Clear enviado: success=true");
+      logEvent("[BT] DTC Clear vazio (sem simulacao) enviado: success=true");
     }
   }
 
@@ -993,8 +1277,8 @@ void loop() {
     float currentSpeed = 0;
     float currentFuelRate = 0;
     xSemaphoreTake(dataMutex, portMAX_DELAY);
-    currentSpeed = sensors.speed;
-    currentFuelRate = sensors.fuelRate; // L/h
+    currentSpeed = tripSpeed;
+    currentFuelRate = tripFuelRate; // L/h
     xSemaphoreGive(dataMutex);
 
     // Integração do tempo total de forma independente (ignição ativa)
@@ -1029,17 +1313,12 @@ void loop() {
   // ==============================================================
   if (tripDist - lastSavedDist >= 5.0f && obdState == 4) {
     lastSavedDist = tripDist; // Sincroniza o marcador de distância
-    File f = LittleFS.open("/trip_current.json", "w");
-    if (f) {
-      f.printf("{\"ts\":%u,\"dist\":%.2f,\"fuel\":%.3f,\"ttot\":%u,\"tdri\":%u,\"price\":%.2f}", 
-               lastKnownEpoch, tripDist, tripFuel, tripTimeTot, tripTimeDri, fuelPrice);
-      f.close();
-      Serial.println("[TRIP] Backup de 5km salvo com sucesso na Flash!");
-    }
+    saveTripPending = true;    // Dispara salvamento em background
+    Serial.println("[TRIP] Solicitado backup de 5km em background.");
   }
 
   // ==============================================================
-  // ★ TRANSMISSÃO BLUETOOTH DE TELEMETRIA (20Hz / 50ms) ★
+  // ★ TRANSMISSÃO BLUETOOTH DE TELEMETRIA BINÁRIA (20Hz / 50ms) ★
   // ==============================================================
   static uint32_t lastBtUpdate = 0;
   if (millis() - lastBtUpdate > 50) {
@@ -1052,23 +1331,123 @@ void loop() {
     st = obdState;
     xSemaphoreGive(dataMutex);
 
-    char buf[768];
-    snprintf(
-        buf, sizeof(buf),
-        "{"
-        "\"rpm\":%.0f,\"speed\":%.0f,\"throttle\":%.1f,\"pedal\":%.1f,\"load\":%.1f,"
-        "\"fuelRate\":%.2f,\"boost\":%.1f,\"coolant\":%.0f,\"catalyst\":%.1f,"
-        "\"ambient\":%.0f,\"ethanol\":%.0f,\"voltage\":%.2f,\"fuelLevel\":%.1f,"
-        "\"tripDist\":%.2f,\"tripFuel\":%.3f,\"tripTimeTot\":%u,\"tripTimeDri\":%u,"
-        "\"obd_state\":%d,"
-        "\"loopMs\":%.0f"
-        "}",
-        s.rpm, s.speed, s.throttle, s.pedal, s.load, s.fuelRate, s.boost,
-        s.coolant, s.catalyst, s.ambientTemp, s.ethanol, s.voltage, s.fuelLevel,
-        tripDist, tripFuel, tripTimeTot, tripTimeDri,
-        st,
-        s.loopMs);
+    // Frame binário compacto de 51 bytes v7.0 (Fase 3)
+    uint8_t buf[51];
     
-    SerialBT.println(buf);
+    // Headers de sincronização
+    buf[0] = 0x44;
+    buf[1] = 0x33;
+    buf[2] = 0x22;
+    buf[3] = 0x11;
+    
+    // Tipo de pacote: 0x01 = Telemetria
+    buf[4] = 0x01;
+    
+    // RPM (uint16)
+    uint16_t rpmVal = (uint16_t)(s.rpm < 0 ? 0 : s.rpm);
+    buf[5] = (rpmVal >> 8) & 0xFF;
+    buf[6] = rpmVal & 0xFF;
+    
+    // Velocidade (uint8)
+    buf[7] = (uint8_t)(s.speed < 0 ? 0 : s.speed);
+    
+    // Throttle / Borboleta (uint8)
+    buf[8] = (uint8_t)(s.throttle < 0 ? 0 : s.throttle);
+    
+    // Pedal (uint8)
+    buf[9] = (uint8_t)(s.pedal < 0 ? 0 : s.pedal);
+    
+    // Carga (uint8)
+    buf[10] = (uint8_t)(s.load < 0 ? 0 : s.load);
+    
+    // Fuel Rate (uint16)
+    uint16_t frVal = (uint16_t)(s.fuelRate < 0 ? 0 : s.fuelRate);
+    buf[11] = (frVal >> 8) & 0xFF;
+    buf[12] = frVal & 0xFF;
+    
+    // Boost / Pressão (int16)
+    int16_t boostVal = (int16_t)s.boost;
+    buf[13] = (boostVal >> 8) & 0xFF;
+    buf[14] = boostVal & 0xFF;
+    
+    // Coolant / Água (int8)
+    buf[15] = (int8_t)s.coolant;
+    
+    // Catalisador (int16)
+    int16_t catVal = (int16_t)s.catalyst;
+    buf[16] = (catVal >> 8) & 0xFF;
+    buf[17] = catVal & 0xFF;
+    
+    // Temp. Ambiente (int8)
+    buf[18] = (int8_t)s.ambientTemp;
+    
+    // Etanol % (uint8)
+    buf[19] = (uint8_t)(s.ethanol < 0 ? 0 : s.ethanol);
+    
+    // Voltagem (uint16)
+    uint16_t voltVal = (uint16_t)(s.voltage < 0 ? 0 : s.voltage);
+    buf[20] = (voltVal >> 8) & 0xFF;
+    buf[21] = voltVal & 0xFF;
+    
+    // Nível Combustível (uint8)
+    buf[22] = (uint8_t)(s.fuelLevel < 0 ? 0 : s.fuelLevel);
+    
+    // Distância Viagem (float, 4 bytes - Little Endian nativo)
+    memcpy(&buf[23], &tripDist, 4);
+    
+    // Combustível Gasto (float, 4 bytes - Little Endian nativo)
+    memcpy(&buf[27], &tripFuel, 4);
+    
+    // Tempo Total Viagem (uint32_t, 4 bytes - Little Endian nativo)
+    memcpy(&buf[31], &tripTimeTot, 4);
+    
+    // Tempo em Movimento (uint32_t, 4 bytes - Little Endian nativo)
+    memcpy(&buf[35], &tripTimeDri, 4);
+    
+    // --- Novos 8 sensores de Prioridade 2 ---
+    
+    // Oil Press (uint8, envia como val * 10)
+    buf[39] = (uint8_t)(s.oilPres < 0 ? 0 : (s.oilPres * 10 > 255 ? 255 : s.oilPres * 10));
+    
+    // Fuel Press (uint8, valor cru)
+    buf[40] = (uint8_t)(s.fuelPress < 0 ? 0 : (s.fuelPress > 255 ? 255 : s.fuelPress));
+    
+    // Oil Temp (int8)
+    buf[41] = (int8_t)s.oilTemp;
+    
+    // IAT (int8)
+    buf[42] = (int8_t)s.iat;
+    
+    // EGT (uint16_t, 2 bytes, Big Endian)
+    uint16_t egtVal = (uint16_t)(s.egt < 0 ? 0 : s.egt);
+    buf[43] = (egtVal >> 8) & 0xFF;
+    buf[44] = egtVal & 0xFF;
+    
+    // AFR (uint8, envia como val * 10)
+    buf[45] = (uint8_t)(s.afr < 0 ? 0 : (s.afr * 10 > 255 ? 255 : s.afr * 10));
+    
+    // Lambda (uint8, envia como val * 100)
+    buf[46] = (uint8_t)(s.lambda < 0 ? 0 : (s.lambda * 100 > 255 ? 255 : s.lambda * 100));
+    
+    // Timing (int8)
+    buf[47] = (int8_t)s.timing;
+    
+    // --- Metadados de Diagnóstico e Checksum ---
+    
+    // Estado OBD (uint8)
+    buf[48] = (uint8_t)st;
+    
+    // Duração do Loop CAN (uint8)
+    buf[49] = (uint8_t)(s.loopMs > 255 ? 255 : s.loopMs);
+    
+    // Checksum (soma simples modulo 256 de todos os 50 bytes anteriores)
+    uint8_t checksum = 0;
+    for (int i = 0; i < 50; i++) {
+      checksum += buf[i];
+    }
+    buf[50] = checksum;
+    
+    // Envia o frame binário de 51 bytes para o Bluetooth
+    SerialBT.write(buf, 51);
   }
 }

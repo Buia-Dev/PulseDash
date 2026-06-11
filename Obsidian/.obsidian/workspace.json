@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "Pulsedash/🗂️ Estrutura de Arquivos.md",
+                "file": "Pulsedash/Estudo_OBD2_RealDash.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "🗂️ Estrutura de Arquivos"
+              "title": "Estudo_OBD2_RealDash"
             }
           }
         ]
@@ -185,10 +185,12 @@
   },
   "active": "2aea6ba463484f8e",
   "lastOpenFiles": [
+    "Pulsedash/📝 Lista de Tarefas.md",
+    "Pulsedash/🏆 Log de Conquistas.md",
+    "Pulsedash/🗂️ Estrutura de Arquivos.md",
     "Pulsedash/🚗 Scan Honda Fit 2011.md",
     "Pulsedash/⚙️ Painel de Controle (Home).md",
     "Pulsedash/🔌 Sensores e Comunicação.md",
-    "Pulsedash/📝 Lista de Tarefas.md",
     "Pulsedash/📱 App Android (APK).md",
     "Pulsedash/🤖 Atualização para IAs.md",
     "Pulsedash/🖥️ Interface e Widgets.md",

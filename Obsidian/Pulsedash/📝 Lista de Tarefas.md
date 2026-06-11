@@ -82,6 +82,13 @@
 - [x] **Ambiente de Build Consolidado:** Configuração do script `sync.js`, correção de bypass de ExecutionPolicy via `npx.cmd`.
 - [x] **Lançamento v6.9:** Compilação do APK via JBR e arquivamento em `APK/PulseDashV6.9.apk`.
 
+### ✅ Fase 6 — Universalização OBD2 & Telemetria Binária v7.0 (2026-06-11)
+- [x] **Dropdown Dinâmico de Perfis:** Menu de seleção de perfil associado à marca do carro no front-end (`main.js`).
+- [x] **Compilador de Configuração (`CFG;`):** Abstração automática de baudrate, tipo de CAN e IDs de mensagens a partir do array `init` (`transport.js`).
+- [x] **Parser Dinâmico 16-bit / Modos:** Firmware ESP32 decodifica PIDs de 1 ou 2 bytes e Modos (01, 21, 22) baseados no comprimento do hex string.
+- [x] **Telemetria Binária Compacta:** Implementação de frame de 42 bytes a 20Hz (50ms) com checagem de checksum e alinhador de buffer no app.
+- [x] **Handshake Estendido UDS:** Suporte a handshake com modo e PID customizados (ex: UDS `10 03`) e persistência LittleFS `/car_profile.cfg`.
+
 ---
 
 ## 🔜 Em Progresso / Próximos Passos
@@ -97,6 +104,12 @@
 - [x] **Estabilidade do Bluetooth:** O app reconecta automaticamente após o carro desligar e a ESP reiniciar?
 - [x] **Slosh Mitigation em curvas:** O algoritmo mantém o ponteiro de combustível estável em curvas fortes?
 
+### 🚗 Projeto Futuro — Expansão K-Line (Caline) & Handshake Estendido
+- [ ] **Despertar Elétrico (Linha K):** Sequências físicas de pulsação na GPIO configurada (Fast Init de 25ms LOW / 25ms HIGH e 5-Baud Init a 5 bps) no firmware.
+- [ ] **Baudrate de Comunicação Dinâmico:** Negociação e reinicialização da porta serial para velocidades legadas (ex: 10400 bps / 9600 bps) na injeção.
+- [ ] **Parser de Comandos K-Line do XML:** Mapear comandos como `atfi` (Fast Init) e `atal` (Active Line) para acionar as rotinas de hardware correspondentes na ESP32.
+- [ ] **Escalonamento Suave:** Ajustar a fila do scheduler para lidar com timeouts longos da K-Line (50ms a 100ms) sem travar a thread de telemetria.
+
 ### 🔧 Melhorias Pós-Teste (v6.3)
 - [ ] **Modo noturno automático:** Redução de brilho do canvas após 21h (via `unixTime` sincronizado pelo app).
 - [ ] **PIDs alternativos GM:** Investigar PIDs proprietários para MAP e Consumo caso os padrão `0x0B`/`0x5E` sempre usem fallback.
@@ -104,6 +117,16 @@
 
 ### 📱 Transição (v7.0 - Visão Futura)
 - [ ] **Widget de Força G Físico:** CAN sniffing da EBCM/ABS (ID `0x1F5`).
+- [ ] **Expansão de Sensores na Telemetria Binária:** Mapear e transmitir os 8 sensores restantes definidos na UI do App:
+  - Pressão de Óleo (`oilPress` — targetId 150)
+  - Pressão de Combustível (`fuelPress` — targetId 254/0a)
+  - Temp. Óleo (`oilTemp` — targetId 151/5c)
+  - Temp. Ar Admissão (`iat` — targetId 27/0f)
+  - Temp. Escape EGT (`egt` — targetId 152/153)
+  - Mistura AFR (`afr` — targetId 34)
+  - Sensor Lambda (`lambda` — targetId 30)
+  - Ponto de Ignição (`timing` — targetId 35/0e)
+- [ ] **Aumento do Frame Binário:** Redimensionar o frame da ESP32 de 42 bytes para acomodar os novos bytes dos sensores extras e atualizar o DataView do `transport.js`.
 - [ ] **APK de produção assinada:** Keystore próprio + `assembleRelease` para publicação.
 
 ### 🚗 Projeto Paralelo — Gol G1
