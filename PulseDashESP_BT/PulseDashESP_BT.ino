@@ -44,6 +44,22 @@ uint32_t unixTime = 0;
 uint32_t lastUnixSyncMs = 0;
 uint32_t lastKnownEpoch = 0; // Timestamp do último dia rodado
 
+// --- Variáveis de Sinalização de Escrita em Flash (LittleFS) ---
+volatile bool saveTripPending = false;
+volatile bool saveUnsupportedPending = false;
+volatile bool saveHistPending = false;
+volatile bool saveConfigPending = false;
+
+// Buffers de transferência para as tasks de background
+uint32_t histPendingTs = 0;
+float histPendingDist = 0.0f;
+float histPendingFuel = 0.0f;
+uint32_t histPendingTimeTot = 0;
+uint32_t histPendingTimeDri = 0;
+float histPendingPrice = 0.0f;
+
+char pendingConfigCmd[512] = "";
+
 // ==============================================================
 // ★ FUNÇÃO: SINALIZAR SALVAMENTO DO HISTÓRICO EM SEGUNDO PLANO ★
 // ==============================================================
@@ -98,22 +114,6 @@ volatile uint32_t obdLastOk = 0;
 // --- Variáveis de Controle de DTC ---
 volatile bool dtcScanPending = false;
 volatile bool dtcClearPending = false;
-
-// --- Variáveis de Sinalização de Escrita em Flash (LittleFS) ---
-volatile bool saveTripPending = false;
-volatile bool saveUnsupportedPending = false;
-volatile bool saveHistPending = false;
-volatile bool saveConfigPending = false;
-
-// Buffers de transferência para as tasks de background
-uint32_t histPendingTs = 0;
-float histPendingDist = 0.0f;
-float histPendingFuel = 0.0f;
-uint32_t histPendingTimeTot = 0;
-uint32_t histPendingTimeDri = 0;
-float histPendingPrice = 0.0f;
-
-char pendingConfigCmd[512] = "";
 
 
 // Sensores em struct — reset limpo e cópia atômica
